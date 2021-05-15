@@ -1,0 +1,23 @@
+<UI version="4.0" >
+ <class>upload</class>
+ <widget class="QWidget" name="upload" >
+  <property name="objectName" >
+   <string notr="true">upload</string>
+  </property>
+  <property name="geometry" >
+   <rect>
+	<x>0</x>
+	<y>0</y>
+	<width>400</width>
+	<height>300</height>
+   </rect>
+  </property>
+  <property name="windowTitle" >
+   <string>upload</string>
+  </property>
+ </widget>
+ <layoutDefault spacing="6" margin="11" />
+ <pixmapfunction></pixmapfunction>
+ <resources/>
+ <connections/>
+</UI>
