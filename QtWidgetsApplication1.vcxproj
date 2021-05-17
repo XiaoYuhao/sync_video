@@ -55,16 +55,16 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x64'">
-    <LibraryPath>D:\Codes\QtWidgetsApplication1\quazip;D:\Codes\QtWidgetsApplication1\openzen;D:\Codes\QtWidgetsApplication1\opencv2;D:\Codes\QtWidgetsApplication1\kinect;$(LibraryPath)</LibraryPath>
-    <IncludePath>D:\Codes\QtWidgetsApplication1\opencv;$(IncludePath)</IncludePath>
+    <LibraryPath>D:\Codes\QtWidgetsApplication1\ffmpeg;D:\Codes\QtWidgetsApplication1\quazip;D:\Codes\QtWidgetsApplication1\openzen;D:\Codes\QtWidgetsApplication1\opencv2;D:\Codes\QtWidgetsApplication1\kinect;$(LibraryPath)</LibraryPath>
+    <IncludePath>D:\Codes\QtWidgetsApplication1\ffmpeg\ffmpeg;D:\Codes\QtWidgetsApplication1\ffmpeg;D:\Codes\QtWidgetsApplication1\opencv;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|x64'">
     <LibraryPath>D:\Codes\QtWidgetsApplication1\quazip;D:\Codes\QtWidgetsApplication1\openzen;D:\Codes\QtWidgetsApplication1\opencv;D:\Codes\QtWidgetsApplication1\kinect;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <Link>
-      <AdditionalLibraryDirectories>D:\Codes\QtWidgetsApplication1\quazip;D:\Codes\QtWidgetsApplication1\opencv;D:\Codes\QtWidgetsApplication1\openzen;D:\Codes\QtWidgetsApplication1\kinect;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>quazip.lib;OpenZen.lib;k4a.lib;k4arecord.lib;opencv_world3414.lib;opencv_world3414d.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>D:\Codes\QtWidgetsApplication1\ffmpeg;D:\Codes\QtWidgetsApplication1\quazip;D:\Codes\QtWidgetsApplication1\opencv;D:\Codes\QtWidgetsApplication1\openzen;D:\Codes\QtWidgetsApplication1\kinect;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>swscale.lib;swresample.lib;postproc.lib;avutil.lib;avformat.lib;avfilter.lib;avdevice.lib;avcodec.lib;quazip.lib;OpenZen.lib;k4a.lib;k4arecord.lib;opencv_world3414.lib;opencv_world3414d.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <ClCompile>
       <LanguageStandard>stdcpp14</LanguageStandard>

@@ -8,3 +8,4 @@
 
 
 int listDevices(std::vector<std::string>& list);
+int camera1();

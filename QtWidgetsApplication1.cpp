@@ -6,6 +6,64 @@
 #include <QTime>
 #include <cstdio>
 
+extern "C" {
+#include "ffmpeg/libavformat/avformat.h"
+#include "ffmpeg/libavcodec/avcodec.h"
+#include "ffmpeg/libavdevice/avdevice.h"
+}
+
+void captureOneFrame() {
+    AVFormatContext* pFormatCtx = NULL;
+    int i, videoindex;
+    AVDictionary* options = NULL;
+    av_dict_set(&options, "input_format", "mjpeg", 0);
+    av_dict_set(&options, "framerate", "30", 0);
+    av_dict_set(&options, "video_size", "1920x1080", 0);
+    
+    avformat_network_init();
+    avdevice_register_all();
+
+    std::vector<std::string> list;
+    listDevices(list);
+    int index = 0;
+    for (int i = 0; i < list.size(); i++)
+    {
+        std::cout << "device lists:" << list[i] << '\t' << "i=" << i << std::endl;
+        if (list[i] == "USB CAMERA") {
+            index = i;
+            qDebug() << "Will open USB CAMERA";
+        }
+    }
+
+    pFormatCtx = avformat_alloc_context();
+
+    //在windows平台下最好使用dshow方式
+    AVInputFormat* ifmt = av_find_input_format("dshow");
+    //Set own video device's name
+    //摄像头名称
+    if (avformat_open_input(&pFormatCtx, "video=USB CAMERA", ifmt, &options) != 0)
+    {
+        qDebug() << "Couldn't open input stream.";
+        return ;
+    }
+    if (avformat_find_stream_info(pFormatCtx, NULL) < 0)
+    {
+        qDebug() << "Couldn't find stream information.\n";
+        return ;
+    }
+
+    AVPacket* packet = (AVPacket*)av_malloc(sizeof(AVPacket));
+    av_read_frame(pFormatCtx, packet);
+    qDebug() << "frame size = " << packet->size;
+    FILE* fp;
+    fp = fopen("ffmpeg_image.jpeg", "wb");
+    fwrite(packet->data, 1, packet->size, fp);
+    fflush(fp);
+    fclose(fp);
+    av_free(packet);
+    avformat_close_input(&pFormatCtx);
+}
+
 QtWidgetsApplication1::QtWidgetsApplication1(QWidget *parent)
     : QMainWindow(parent)
 {
@@ -28,8 +86,10 @@ QtWidgetsApplication1::QtWidgetsApplication1(QWidget *parent)
     can_release = false;
 
     //QtConcurrent::run(this, &QtWidgetsApplication1::readCamera);
-    QtConcurrent::run(this, &QtWidgetsApplication1::readKinect);
+    //QtConcurrent::run(this, &QtWidgetsApplication1::readKinect);
 
+    //captureOneFrame();
+    camera1();
    
     QThread::msleep(1000);
     camera_timer->start(10);
@@ -135,11 +195,8 @@ void QtWidgetsApplication1::start_botton_clicked() {
     }
     qDebug() << save_path << endl;
 
-    stop_record = false;
-    can_release = false;
-
-    QString filename1 = save_path+ "camera1.avi";
-    QString filename2 = save_path + "kinect.avi";
+    QString filename1 = save_path+ "\\camera1.avi";
+    QString filename2 = save_path + "\\kinect.avi";
     QFile file1(filename1);
     QFile file2(filename2);
     if (file1.exists()) {
@@ -148,11 +205,16 @@ void QtWidgetsApplication1::start_botton_clicked() {
     if (file2.exists()) {
         file2.remove();
     }
-    std::string pipe_command1 = "ffmpeg -f dshow -vcodec mjpeg -i video=\"USB CAMERA\" -r 30 -s 1920x1080 -vcodec copy " + filename1.toStdString();
+    std::string pipe_command1 = "ffmpeg -y -f dshow -rtbufsize 1000M -i video=\"USB CAMERA\" -s 1920x1080 -qscale 5 " + filename1.toStdString();
     std::string pipe_command2 = "ffmpeg -r 30 -f image2pipe -pix_fmt yuvj422p -s:v 1920x1080 -vcodec mjpeg -i - -vcodec mjpeg -qscale 5 " + filename2.toStdString();
 
-    ffmpeg_pipe1 = _popen(pipe_command1.data(), "wb");
+    std::cout << pipe_command1 << std::endl;
+    std::cout << pipe_command2 << std::endl;
+
+    ffmpeg_pipe1 = _popen(pipe_command1.data(), "w");
     ffmpeg_pipe2 = _popen(pipe_command2.data(), "wb");
+    stop_record = false;
+    can_release = false;
 
     start_time = QTime::currentTime();
     
@@ -161,13 +223,13 @@ void QtWidgetsApplication1::start_botton_clicked() {
 void QtWidgetsApplication1::stop_botton_clicked() {
     stop_record = true;
     can_release = true;
+    fwrite("q", 1, sizeof(char), ffmpeg_pipe1);
     fflush(ffmpeg_pipe1);
     _pclose(ffmpeg_pipe1);
 }
 
 void QtWidgetsApplication1::close_botton_clicked() {
     stop_camera = true;
-    
     camera_timer->stop();
 }
 
@@ -185,19 +247,36 @@ void QtWidgetsApplication1::readCamera() {
             qDebug() << "Will open USB CAMERA";
         }
     }
+    
     capture.open(index, cv::CAP_DSHOW);
+    capture.set(CV_CAP_PROP_FOURCC, 'GPJM');
     capture.set(CV_CAP_PROP_FRAME_WIDTH, 1920);
     capture.set(CV_CAP_PROP_FRAME_HEIGHT, 1080);
     capture.set(CV_CAP_PROP_FPS, 30);
     qDebug() << "start read camera." << endl;
-    cv::Mat frame;
+    //cv::Mat frame;
     int count1 = 0;
+
+    /*CvCapture* _capture;
+    _capture = cvCaptureFromCAM(index);*/
+    IplImage* frame;
+
+
     while (!stop_camera) {
-        capture >> frame;
+        //capture >> frame;
+        
         if (!camera1_show_ready) {
-            camera1_color_frame = frame.clone();
+            //camera1_color_frame = frame.clone();
             camera1_show_ready = true;
         }
+        QTime qtime;
+        qtime.start();
+        FILE* file = fopen("camera1.jpeg", "wb");
+        fwrite(frame->imageData, 1, frame->imageSize, file);
+        fclose(file);
+        //cv::imwrite("caerma1.jpeg", frame);
+        qDebug() << qtime.elapsed();
+        //cv::imwrite("camera1.jpeg", frame);
         //qDebug() << QTime::currentTime().toString() << " - frames";
         /*
         if (!stop_record) {
@@ -210,6 +289,7 @@ void QtWidgetsApplication1::readCamera() {
         
     }
     capture.release();
+    
 }
 
 void QtWidgetsApplication1::updateTime() {

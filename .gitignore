@@ -6,3 +6,11 @@
 /openzen/
 *.dll
 /.vs/
+/ffmpeg/
+*.jpg
+*.jpeg
+*.avi
+*.mp4
+*.mjpeg
+*.mjpg
+*.exe
