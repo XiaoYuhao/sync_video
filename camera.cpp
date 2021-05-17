@@ -2,21 +2,6 @@
 
 using namespace cv;
 
-#include <stdio.h>
-
-#define __STDC_CONSTANT_MACROS
-
-extern "C"
-{
-#include "libavcodec/avcodec.h"
-#include "libavformat/avformat.h"
-#include "libswscale/swscale.h"
-#include "libavdevice/avdevice.h"
-#include "libavutil/imgutils.h"
-#include "libavutil/dict.h"
-#include "libavutil/mathematics.h"
-#include "libavutil/time.h"
-};
 
 #include <QTime>
 #include <QDebug>
@@ -109,23 +94,6 @@ int listDevices(std::vector<std::string>& list) {
 	return deviceCounter;
 }
 
-#include <stdio.h>
-
-#define __STDC_CONSTANT_MACROS
-
-extern "C"
-{
-#include "libavcodec/avcodec.h"
-#include "libavformat/avformat.h"
-#include "libswscale/swscale.h"
-#include "libavdevice/avdevice.h"
-#include "libavutil/imgutils.h"
-#include "libavutil/dict.h"
-#include "libavutil/mathematics.h"
-#include "libavutil/time.h"
-};
-
-
 int camera1()
 {
 	AVFormatContext* ifmtCtx = NULL;
@@ -147,7 +115,7 @@ int camera1()
 	int frameIndex = 0;
 
 	const char* inFilename = "video=USB CAMERA";//输入URL
-	const char* outFilename = "output.mjpg"; //输出URL
+	const char* outFilename = "output.avi"; //输出URL
 	const char* ofmtName = NULL;
 
 	avdevice_register_all();
@@ -222,7 +190,7 @@ int camera1()
 
 
 	// 1.6 查找H264编码器
-	pH264Codec = avcodec_find_encoder(AV_CODEC_ID_MJPEG);
+	pH264Codec = avcodec_find_encoder(AV_CODEC_ID_H264);
 	if (!pH264Codec)
 	{
 		printf("can't find h264 codec.\n");
@@ -231,9 +199,9 @@ int camera1()
 
 	// 1.6.1 设置参数
 	pH264CodecCtx = avcodec_alloc_context3(pH264Codec);
-	pH264CodecCtx->codec_id = AV_CODEC_ID_MJPEG;
+	pH264CodecCtx->codec_id = AV_CODEC_ID_H264;
 	pH264CodecCtx->codec_type = AVMEDIA_TYPE_VIDEO;
-	pH264CodecCtx->pix_fmt = AV_PIX_FMT_YUVJ420P;
+	pH264CodecCtx->pix_fmt = AV_PIX_FMT_YUV420P;
 	pH264CodecCtx->width = pCodecCtx->width;
 	pH264CodecCtx->height = pCodecCtx->height;
 	pH264CodecCtx->time_base.num = 1;
@@ -332,9 +300,9 @@ int camera1()
 		pCodecCtx->pix_fmt, pCodecCtx->width, pCodecCtx->height,
 		AV_PIX_FMT_YUV420P, SWS_BICUBIC, NULL, NULL, NULL);
 
-	/*
+	
 	char filename[32];
-	while (frameIndex < 1000)
+	while (frameIndex < 500)
 	{
 		// 3.2 从输入流读取一个packet
 		ret = av_read_frame(ifmtCtx, &pkt);
@@ -343,15 +311,17 @@ int camera1()
 		{
 			break;
 		}
-		sprintf(filename, "out\\camera2_%05d.jpeg", frameIndex);
+		/*sprintf(filename, "out\\camera2_%05d.jpeg", frameIndex);
 		FILE* file = fopen(filename, "wb");
 		fwrite(pkt.data, 1, pkt.size, file);
 		fflush(file);
 		fclose(file);
 		frameIndex++;
-		continue;
+		continue;*/
 		if (pkt.stream_index == videoIndex)
 		{
+			QTime qtime;
+			qtime.start();
 			ret = avcodec_send_packet(pCodecCtx, &pkt);
 			if (ret < 0)
 			{
@@ -361,6 +331,7 @@ int camera1()
 
 			if (avcodec_receive_frame(pCodecCtx, pFrame) >= 0)
 			{
+				qDebug() << qtime.elapsed();
 				sws_scale(pImgConvertCtx,
 					(const unsigned char* const*)pFrame->data,
 					pFrame->linesize, 0, pCodecCtx->height, pFrameYUV->data,
@@ -399,9 +370,9 @@ int camera1()
 
 		av_packet_unref(&pkt);
 	}
-	*/
-
-	while (frameIndex < 1000)
+	
+	/*
+	while (frameIndex < 100)
 	{
 		// 3.2 从输入流读取一个packet
 		ret = av_read_frame(ifmtCtx, &pkt);
@@ -415,15 +386,15 @@ int camera1()
 		frameIndex++;
 
 		ret = av_interleaved_write_frame(ofmtCtx, &pkt);
-		if (ret < 0){
+		if (ret < 0) {
 			printf("send packet failed: %d\n", ret);
 		}
-		else{
+		else {
 			printf("send %5d packet successfully!\n", frameIndex);
 		}
 		av_packet_unref(&pkt);
 	}
-
+	*/
 	av_write_trailer(ofmtCtx);
 
 end:
@@ -442,3 +413,53 @@ end:
 
 	return 0;
 }
+
+int JPEGtoRGB(AVPacket* pkt, AVCodecContext* pCodecCtx, AVFrame* pFrame, QImage *image) {
+	//AVFrame* pFrame;
+	av_frame_unref(pFrame);
+	//av_frame_unref(pFrameRGB);
+	int ret = avcodec_send_packet(pCodecCtx, pkt);
+	if (ret < 0){
+		qDebug() << "Decode error.";
+		return -1;
+	}
+	ret = avcodec_receive_frame(pCodecCtx, pFrame);
+	if (ret < 0) {
+		qDebug() << "Decode error.";
+		return -1;
+	}
+
+	SwsContext* pImgConvertCtx = sws_getContext(pCodecCtx->width, pCodecCtx->height,
+		pCodecCtx->pix_fmt, 256, 144,
+		AV_PIX_FMT_RGB24, SWS_BICUBIC, NULL, NULL, NULL);
+
+	/*sws_scale(pImgConvertCtx,
+		(const unsigned char* const*)pFrame->data,
+		pFrame->linesize, 0, pCodecCtx->height, pFrameRGB->data,
+		pFrameRGB->linesize);
+
+	
+	pFrameRGB->format = pCodecCtx->pix_fmt;
+	pFrameRGB->width = pCodecCtx->width;
+	pFrameRGB->height = pCodecCtx->height;
+	*/
+
+	uint8_t* dst[] = { image->bits() };
+	int linesizes[4];
+
+	av_image_fill_linesizes(linesizes, AV_PIX_FMT_RGB24, 256);
+
+	sws_scale(pImgConvertCtx,
+		(const unsigned char* const*)pFrame->data,
+		pFrame->linesize, 0, pCodecCtx->height, dst,
+		linesizes);
+
+	//av_frame_free(&pFrame);
+	av_frame_unref(pFrame);
+	av_packet_unref(pkt);
+	sws_freeContext(pImgConvertCtx);
+	return 1;
+}
+
+
+

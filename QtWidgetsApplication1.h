@@ -16,6 +16,13 @@
 #include <QSettings>
 #include <QDebug>
 #include <cstdio>
+#include "utils.h"
+
+extern "C" {
+#include "ffmpeg/libavformat/avformat.h"
+#include "ffmpeg/libavcodec/avcodec.h"
+#include "ffmpeg/libavdevice/avdevice.h"
+}
 
 class QtWidgetsApplication1 : public QMainWindow
 {
@@ -23,6 +30,7 @@ class QtWidgetsApplication1 : public QMainWindow
 
 public:
     QtWidgetsApplication1(QWidget *parent = Q_NULLPTR);
+    ~QtWidgetsApplication1();
 
 private:
     Ui::QtWidgetsApplication1Class ui;
@@ -63,6 +71,16 @@ private:
     FILE* ffmpeg_pipe1;
     FILE* ffmpeg_pipe2;
 
+    int record_count;
+    AVPacket show_pkt;
+    k4a_image_t show_color;
+    k4a_image_t show_depth;
+
+    QString dirname1, dirname2, dirname3;
+
+    AVCodec* pCodec;
+    AVCodecContext* pCodecCtx;
+    AVFrame *pFrame, *pFrameRGB;
 
  
 private slots:
@@ -70,10 +88,11 @@ private slots:
     void start_botton_clicked();
     void stop_botton_clicked();
     void close_botton_clicked();
-    void readCamera();
+    
     void updateTime();
     void openSetupWindow();
 
+    void readCamera();
     void readKinect();
 
     void camera1_write();

@@ -115,6 +115,7 @@
   <ItemGroup>
     <ClCompile Include="setupwindow.cpp" />
     <ClCompile Include="upload.cpp" />
+    <ClCompile Include="utils.cpp" />
     <QtRcc Include="QtWidgetsApplication1.qrc" />
     <QtUic Include="QtWidgetsApplication1.ui" />
     <QtMoc Include="QtWidgetsApplication1.h" />
@@ -128,6 +129,7 @@
   <ItemGroup>
     <ClInclude Include="camera.h" />
     <ClInclude Include="imu.h" />
+    <ClInclude Include="utils.h" />
     <QtMoc Include="upload.h" />
     <QtMoc Include="setupwindow.h" />
   </ItemGroup>
