@@ -1,12 +1,13 @@
 #include "QtWidgetsApplication1.h"
 
-#include "imu.h"
 #include "camera.h"
 #include <string>
 #include <QTime>
+#include <QMessageBox>
+#include <QFileDialog>
 #include <cstdio>
 
-
+using namespace zen;
 
 
 QtWidgetsApplication1::QtWidgetsApplication1(QWidget *parent)
@@ -16,34 +17,56 @@ QtWidgetsApplication1::QtWidgetsApplication1(QWidget *parent)
     settings = new QSettings("config.ini", QSettings::IniFormat);
     setupwin.set_setttings(settings);
 
+    qRegisterMetaType<std::vector<std::string>*>();
+    //qRegisterMetaType<std::vector<ZenImuData>*>();
+    qRegisterMetaType<ZenImuData>();
+
     QAction* action_setup = new QAction(tr("Setup"));
     ui.mainToolBar->addAction(action_setup);
     connect(action_setup, SIGNAL(triggered()), this, SLOT(openSetupWindow()));
 
-    camera_timer = new QTimer(this);
+    ui.progressBar->setVisible(false);
+    ui.progressLabel->setVisible(false);
+    ui.sensortable->setVisible(false);
+
+    show_timer = new QTimer(this);
+    write_timer = new QTimer(this);
     time_timer = new QTimer(this);
 
-    connect(camera_timer, SIGNAL(timeout()), this, SLOT(importFrame()));
+    //connect(show_timer, SIGNAL(timeout()), this, SLOT(importFrame()));
+    //connect(write_timer, SIGNAL(timeout()), this, SLOT(writeFrame()));
     connect(time_timer, SIGNAL(timeout()), this, SLOT(updateTime()));
+    connect(this, SIGNAL(ready_to_show()), this, SLOT(importFrame()));
+    connect(this, SIGNAL(ready_to_initimu(std::vector<std::string>*)), this, SLOT(initSensorTable(std::vector<std::string>*)));
+    //connect(this, SIGNAL(ready_to_updateimu(std::vector<ZenImuData>*)), this, SLOT(updateSensorTable(std::vector<ZenImuData>*)));
+    connect(this, SIGNAL(ready_to_updateimu(ZenImuData, int)), this, SLOT(updateSensorTable(ZenImuData, int)));
+    connect(this, SIGNAL(ready_to_appendlog(QString)), this, SLOT(appendLog(QString)));
 
+    pFrame = av_frame_alloc();
+
+    save_path = "";
     stop_camera = false;
     stop_record = true;
-    can_release = false;
 
     QtConcurrent::run(this, &QtWidgetsApplication1::readCamera);
     QtConcurrent::run(this, &QtWidgetsApplication1::readKinect);
+    QtConcurrent::run(this, &QtWidgetsApplication1::initImuSensor);
     //camera1();
-   
+    //imu_test();
+
     QThread::msleep(1000);
-    camera_timer->start(20);
+    write_timer->start(10);
+    show_timer->start(33);
     time_timer->start(1000);
 
     camera1_show_ready = false;
     camera2_show_ready = false;
+
 }
 
 QtWidgetsApplication1::~QtWidgetsApplication1() {
     stop_camera = true;
+    av_frame_free(&pFrame);
 }
 
 void QtWidgetsApplication1::importFrame() {
@@ -53,70 +76,48 @@ void QtWidgetsApplication1::importFrame() {
         camera2_show_ready = false;
         camera1_show_ready = false;
     }*/
-    
-    if (camera1_show_ready && camera2_show_ready) {
-        //qDebug() << QTime::currentTime().toString() << " - frames";
-        /*
-        cv::cvtColor(camera1_color_frame, camera1_color_frame, cv::COLOR_BGR2RGB);
-        cv::cvtColor(camera2_color_frame, camera2_color_frame, cv::COLOR_BGRA2RGB);
-        QImage srcQImage1 = QImage((uchar*)(camera1_color_frame.data), camera1_color_frame.cols, camera1_color_frame.rows, QImage::Format_RGB888);
-        QImage srcQImage2 = QImage((uchar*)(camera2_color_frame.data), camera2_color_frame.cols, camera2_color_frame.rows, QImage::Format_RGB888);
-        
-
-        //cv::cvtColor(camera1_color_frame, camera1_color_frame, cv::COLOR_BGR2RGB);
-        //QImage srcQImage1 = QImage((uchar*)(camera1_color_frame.data), camera1_color_frame.cols, camera1_color_frame.rows, QImage::Format_RGB888);
-        ui.camera1->setPixmap(QPixmap::fromImage(srcQImage1));
-        ui.camera1->setScaledContents(true);
-        ui.camera1->show();
-        
-        //cv::cvtColor(camera2_color_frame, camera2_color_frame, cv::COLOR_BGR2RGB);
-        //QImage srcQImage2 = QImage((uchar*)(camera2_color_frame.data), camera2_color_frame.cols, camera2_color_frame.rows, QImage::Format_RGB888);
-        //QImage srcQImage2 = QImage((uchar*)(k4a_image_get_buffer(camera2_color_frame)),
-        //    k4a_image_get_width_pixels(camera2_color_frame), k4a_image_get_height_pixels(camera2_color_frame), QImage::Format_ARGB32);
-        ui.camera2->setPixmap(QPixmap::fromImage(srcQImage2));
-        ui.camera2->setScaledContents(true);
-        ui.camera2->show();
-
-
-        QImage srcQImage3 = QImage((uchar*)(camera2_depth_frame.data), camera2_depth_frame.cols, camera2_depth_frame.rows, QImage::Format_RGB16);
-        ui.camera3->setPixmap(QPixmap::fromImage(srcQImage3));
-        ui.camera3->setScaledContents(true);
-        ui.camera3->show();
-        */
-        QTime qtime;
-        qtime.start();
-        
+    if (camera1_show_ready) {
         QImage srcQImage1(256, 144, QImage::Format_RGB888);
-        JPEGtoRGB(&show_pkt, pCodecCtx, pFrame, &srcQImage1);
+        JPEGtoRGB(&camera1_show_pkt, camera1_pCodecCtx, pFrame, &srcQImage1);
 
         ui.camera1->setPixmap(QPixmap::fromImage(srcQImage1));
         ui.camera1->setScaledContents(true);
         ui.camera1->show();
-        
-        AVPacket _pkt;
-        av_new_packet(&_pkt, k4a_image_get_size(show_color) + 1000);
-        //av_packet_from_data(&_pkt, k4a_image_get_buffer(show_color), k4a_image_get_size(show_color));
-        memcpy(_pkt.data, k4a_image_get_buffer(show_color), k4a_image_get_size(show_color));
-        _pkt.size = k4a_image_get_size(show_color);
-        
+
+
+        av_packet_unref(&camera1_show_pkt);
+        camera1_show_ready = false;
+    }
+    if (camera2_show_ready) {
+        av_new_packet(&camera2_show_pkt, k4a_image_get_size(show_color));
+        memcpy(camera2_show_pkt.data, k4a_image_get_buffer(show_color), k4a_image_get_size(show_color));
+        camera2_show_pkt.size = k4a_image_get_size(show_color);
+
         QImage srcQImage2(256, 144, QImage::Format_RGB888);
-        JPEGtoRGB(&_pkt, pCodecCtx, pFrame, &srcQImage2);
+        JPEGtoRGB(&camera2_show_pkt, camera2_pCodecCtx, pFrame, &srcQImage2);
 
         ui.camera2->setPixmap(QPixmap::fromImage(srcQImage2));
         ui.camera2->setScaledContents(true);
         ui.camera2->show();
 
-        av_packet_unref(&_pkt);
-        av_free_packet(&_pkt);
-        
-        
+        av_packet_unref(&camera2_show_pkt);
+        av_free_packet(&camera2_show_pkt);
+        k4a_image_release(show_color);
+        camera2_show_ready = false;
+    }
+}
+/*
+void QtWidgetsApplication1::writeFrame() {
+    if (camera1_show_ready && camera2_show_ready) {
+        //QTime qtime;
+        //qtime.start();
         if (!stop_record) {
             QString filename1 = dirname1 + "\\" + QString().sprintf("%06d.jpeg", record_count);
             QFile file1(filename1);
             file1.open(QIODevice::WriteOnly);
             file1.write((char*)show_pkt.data, show_pkt.size);
             file1.close();
-            
+
             QString filename2 = dirname2 + "\\" + QString().sprintf("%06d.jpeg", record_count);
             QFile file2(filename2);
             file2.open(QIODevice::WriteOnly);
@@ -131,9 +132,19 @@ void QtWidgetsApplication1::importFrame() {
 
             record_count++;
         }
-        if (!stop_record && can_release) {
+        
+        if (!can_show) {
+            av_new_packet(&camera1_show_pkt, show_pkt.size);
+            memcpy(camera1_show_pkt.data, show_pkt.data, show_pkt.size);
+            camera1_show_pkt.size = show_pkt.size;
 
+            av_new_packet(&camera2_show_pkt, k4a_image_get_size(show_color));
+            memcpy(camera2_show_pkt.data, k4a_image_get_buffer(show_color), k4a_image_get_size(show_color));
+            camera2_show_pkt.size = k4a_image_get_size(show_color);
+
+            can_show = true;
         }
+        
 
         av_packet_unref(&show_pkt);
         k4a_image_release(show_color);
@@ -141,32 +152,19 @@ void QtWidgetsApplication1::importFrame() {
         camera1_show_ready = false;
         camera2_show_ready = false;
 
-        qDebug() << qtime.elapsed();
+        qDebug() << QTime::currentTime().toString();
     }
-    
-    
-    /*
-    QImage srcQImage3 = QImage((uchar*)(k4a_image_get_buffer(camera2_depth_frame)),
-        k4a_image_get_width_pixels(camera2_depth_frame), k4a_image_get_height_pixels(camera2_depth_frame), QImage::Format_ARGB4444_Premultiplied);
-    ui.camera3->setPixmap(QPixmap::fromImage(srcQImage3));
-    ui.camera3->setScaledContents(true);
-    ui.camera3->show();
-
-    QImage srcQImage4 = QImage((uchar*)(k4a_image_get_buffer(camera2_ir_frame)),
-        k4a_image_get_width_pixels(camera2_ir_frame), k4a_image_get_height_pixels(camera2_ir_frame), QImage::Format_ARGB4444_Premultiplied);
-    ui.camera4->setPixmap(QPixmap::fromImage(srcQImage4));
-    ui.camera4->setScaledContents(true);
-    ui.camera4->show();*/
-}
+}*/
 
 void QtWidgetsApplication1::start_botton_clicked() {
     if (!stop_record) return;
-
-    QString name = ui.lineEdit->text();
-    name += QTime::currentTime().toString();
-    save_path = settings->value("save_dir").toString();
+    if (save_path == "") {
+        QMessageBox::warning(NULL, QString().fromLocal8Bit("提示"), QString().fromLocal8Bit("未选择保存文件夹！"));
+        return;
+    }
+    //save_path = settings->value("save_dir").toString();
     //save_path += "\\out.avi";
-    save_path += "out";
+    //save_path += "out";
 
     QDir dir;
     if (!dir.exists(save_path)) {
@@ -177,6 +175,7 @@ void QtWidgetsApplication1::start_botton_clicked() {
     dirname1 = save_path + "\\camera1";
     dirname2 = save_path + "\\kinect_color";
     dirname3 = save_path + "\\kinect_depth";
+    dirname4 = save_path + "\\imu_data";
     if (!dir.exists(dirname1)) {
         dir.mkdir(dirname1);
     }
@@ -186,14 +185,19 @@ void QtWidgetsApplication1::start_botton_clicked() {
     if (!dir.exists(dirname3)) {
         dir.mkdir(dirname3);
     }
+    if (!dir.exists(dirname4)) {
+        dir.mkdir(dirname4);
+    }
     clearFiles(dirname1);
     clearFiles(dirname2);
     clearFiles(dirname3);
+    clearFiles(dirname4);
     
 
     stop_record = false;
-    can_release = false;
-    record_count = 0;
+    can_write_imudata = false;
+    record1_count = 0;
+    record2_count = 0;
 
     start_time = QTime::currentTime();
     
@@ -201,12 +205,37 @@ void QtWidgetsApplication1::start_botton_clicked() {
 
 void QtWidgetsApplication1::stop_botton_clicked() {
     stop_record = true;
-    can_release = true;
+
+    QPixmap pixmap;
+    pixmap.load("resource\\tongji.jpeg");
+    ui.camera1->setPixmap(pixmap);
+    ui.camera1->setScaledContents(true);
+    ui.camera1->show();
+    ui.camera2->setPixmap(pixmap);
+    ui.camera2->setScaledContents(true);
+    ui.camera2->show();
+
+    ui.progressBar->setVisible(true);
+    ui.progressLabel->setVisible(true);
+
+    createVideo(dirname1, save_path + "\\camera.avi");
+    createVideo(dirname2, save_path + "\\kinect_color.avi");
+
+    QThread::msleep(1000);
+    ui.progressBar->setVisible(false);
+    ui.progressLabel->setVisible(false);
 }
 
 void QtWidgetsApplication1::close_botton_clicked() {
     stop_camera = true;
-    camera_timer->stop();
+    show_timer->stop();
+    write_timer->stop();
+    time_timer->stop();
+}
+
+void QtWidgetsApplication1::tool_botton_clicked() {
+    save_path = QDir::toNativeSeparators(QFileDialog::getExistingDirectory(this, tr("Save Path"), QDir::currentPath()));
+    ui.dirlabel->setText(save_path);
 }
 
 
@@ -224,6 +253,7 @@ void QtWidgetsApplication1::readCamera() {
 
     avformat_network_init();
     avdevice_register_all();
+    av_log_set_level(AV_LOG_ERROR);
 
     std::vector<std::string> list;
     listDevices(list);
@@ -246,19 +276,16 @@ void QtWidgetsApplication1::readCamera() {
     if (avformat_open_input(&pFormatCtx, "video=USB CAMERA", ifmt, &options) != 0)
     {
         qDebug() << "Couldn't open input stream.";
+        emit ready_to_appendlog(QString().fromLocal8Bit("错误：USB相机无法打开，请检查连接是否正常."));
         return;
     }
     if (avformat_find_stream_info(pFormatCtx, NULL) < 0)
     {
-        qDebug() << "Couldn't find stream information.\n";
+        qDebug() << "Couldn't find stream information.";
+        emit ready_to_appendlog(QString().fromLocal8Bit("错误：USB相机无法找到流信息."));
         return;
     }
-
-    //AVCodec* pCodec;
-    //AVCodecContext* pCodecCtx;
-
-    // 获取输入ctx
-    for (i = 0; i < pFormatCtx->nb_streams; ++i)
+    for (int i = 0; i < pFormatCtx->nb_streams; ++i)
     {
         if (pFormatCtx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO)
         {
@@ -270,32 +297,32 @@ void QtWidgetsApplication1::readCamera() {
     av_dump_format(pFormatCtx, 0, "USB CAMERA", 0);
 
     // 查找输入解码器
-    pCodec = avcodec_find_decoder(pFormatCtx->streams[index]->codecpar->codec_id);
-    if (!pCodec)
+    camera1_pCodec = avcodec_find_decoder(pFormatCtx->streams[index]->codecpar->codec_id);
+    if (!camera1_pCodec)
     {
         qDebug() << "can't find codec";
+        emit ready_to_appendlog(QString().fromLocal8Bit("错误：USB相机无法找到解码器."));
         return;
     }
 
-    pCodecCtx = avcodec_alloc_context3(pCodec);
-    if (!pCodecCtx)
+    camera1_pCodecCtx = avcodec_alloc_context3(camera1_pCodec);
+    if (!camera1_pCodecCtx)
     {
         qDebug() << "can't alloc codec context";
-        return ;
-    }
-
-    avcodec_parameters_to_context(pCodecCtx, pFormatCtx->streams[index]->codecpar);
-
-    //  1.5 打开输入解码器
-    if (avcodec_open2(pCodecCtx, pCodec, NULL) < 0)
-    {
-        printf("can't open codec\n");
+        emit ready_to_appendlog(QString().fromLocal8Bit("错误：USB相机无法为解码器分配空间."));
         return;
     }
 
-    pFrame = av_frame_alloc();
-    pFrameRGB = av_frame_alloc();
+    avcodec_parameters_to_context(camera1_pCodecCtx, pFormatCtx->streams[index]->codecpar);
 
+    //  1.5 打开输入解码器
+    if (avcodec_open2(camera1_pCodecCtx, camera1_pCodec, NULL) < 0)
+    {
+        qDebug() << "can't open codec";
+        emit ready_to_appendlog(QString().fromLocal8Bit("错误：USB相机无法打开解码器."));
+        return;
+    }
+    emit ready_to_appendlog(QString().fromLocal8Bit("提示：USB相机初始化成功."));
     AVPacket pkt;
     int ret = 0;
     while (!stop_camera) {
@@ -304,14 +331,22 @@ void QtWidgetsApplication1::readCamera() {
             break;
         }
         if (!camera1_show_ready) {
-            av_packet_move_ref(&show_pkt, &pkt);
+            //av_packet_move_ref(&camera1_show_pkt, &pkt);
+            av_packet_ref(&camera1_show_pkt, &pkt);
             camera1_show_ready = true;
+            emit ready_to_show();
+        }
+        if (!stop_record) {
+            QString filename1 = dirname1 + "\\" + QString().sprintf("%06d.jpeg", record1_count);
+            QFile file1(filename1);
+            file1.open(QIODevice::WriteOnly);
+            file1.write((char*)pkt.data, pkt.size);
+            file1.close();
+            record1_count++;
         }
         av_packet_unref(&pkt);
     }
 
-    av_frame_free(&pFrame);
-    av_frame_free(&pFrameRGB);
     avformat_close_input(&pFormatCtx);
 
 }
@@ -338,11 +373,13 @@ void QtWidgetsApplication1::readKinect() {
     uint32_t count = k4a_device_get_installed_count();;
     if (count == 0) {
         qDebug() << "No k4a devices attached!" << endl;
+        emit ready_to_appendlog(QString().fromLocal8Bit("错误：无法找到Kinect设备，请检查设备是否正常连接."));
         return;
     }
     k4a_device_t device = NULL;
     if (K4A_FAILED(k4a_device_open(K4A_DEVICE_DEFAULT, &device))) {
         qDebug() << "Failed to open k4a device!" << endl;
+        emit ready_to_appendlog(QString().fromLocal8Bit("错误：无法打开Kinect设备，请检查设备是否正常运行（电源、USB连接）."));
         return;
     }
     size_t serial_size = 0;
@@ -358,24 +395,60 @@ void QtWidgetsApplication1::readKinect() {
     config.color_resolution = K4A_COLOR_RESOLUTION_1080P;
     config.depth_mode = K4A_DEPTH_MODE_WFOV_2X2BINNED;
 
+    // 查找输入解码器
+    camera2_pCodec = avcodec_find_decoder(AV_CODEC_ID_MJPEG);
+    if (!camera2_pCodec)
+    {
+        qDebug() << "kinect can't find codec";
+        emit ready_to_appendlog(QString().fromLocal8Bit("错误：Kinect无法找到解码器."));
+        return ;
+    }
+
+    camera2_pCodecCtx = avcodec_alloc_context3(camera2_pCodec);
+    if (!camera2_pCodecCtx)
+    {
+        qDebug() << "kinect can't alloc codec context";
+        emit ready_to_appendlog(QString().fromLocal8Bit("错误：Kinect无法为解码器分配空间."));
+        return ;
+    }
+
+    camera2_pCodecCtx->codec_id = AV_CODEC_ID_MJPEG;
+    camera2_pCodecCtx->codec_type = AVMEDIA_TYPE_VIDEO;
+    camera2_pCodecCtx->pix_fmt = AV_PIX_FMT_YUVJ422P;
+    camera2_pCodecCtx->width = 1920;
+    camera2_pCodecCtx->height = 1080;
+
+    //qDebug() << pCodecCtx->codec_id << " - " << pCodecCtx->codec_type << " - " << pCodecCtx->pix_fmt;
+
+    //  1.5 打开输入解码器
+    if (avcodec_open2(camera2_pCodecCtx, camera2_pCodec, NULL) < 0)
+    {
+        qDebug() << "kinect can't open codec";
+        emit ready_to_appendlog(QString().fromLocal8Bit("错误：Kinect无法打开解码器."));
+        return ;
+    }
+
     if (K4A_FAILED(k4a_device_start_cameras(device, &config))) {
         qDebug()<<"Failed to start cameras!"<<endl;
+        emit ready_to_appendlog(QString().fromLocal8Bit("错误：Kinect打开相机失败."));
         k4a_device_close(device);
         return;
     }
     k4a_capture_t capture = NULL;
+    emit ready_to_appendlog(QString().fromLocal8Bit("提示：Kinect初始化成功."));
 
-    int count2 = 0;
     while (!stop_camera) {
         switch (k4a_device_get_capture(device, &capture, 1000)) {
         case K4A_WAIT_RESULT_SUCCEEDED:
             break;
         case K4A_WAIT_RESULT_TIMEOUT:
             qDebug() << "Timed out waiting for a capture." << endl;
+            emit ready_to_appendlog(QString().fromLocal8Bit("错误：Kinect等待图像数据超时."));
             continue;
             break;
         case K4A_WAIT_RESULT_FAILED:
             qDebug() << "Failed to read a capture." << endl;
+            emit ready_to_appendlog(QString().fromLocal8Bit("错误：Kinect读取图像数据失败."));
             k4a_device_stop_cameras(device);
             k4a_device_close(device);
             return;
@@ -394,9 +467,26 @@ void QtWidgetsApplication1::readKinect() {
         if (!camera2_show_ready) {
             show_color = color_frame;
             k4a_image_reference(show_color);
-            show_depth = depth_frame;
-            k4a_image_reference(show_depth);
             camera2_show_ready = true;
+            emit ready_to_show();
+        }
+
+        if (!stop_record) {
+            can_write_imudata = true;
+
+            QString filename2 = dirname2 + "\\" + QString().sprintf("%06d.jpeg", record2_count);
+            QFile file2(filename2);
+            file2.open(QIODevice::WriteOnly);
+            file2.write((char*)k4a_image_get_buffer(color_frame), k4a_image_get_size(color_frame));
+            file2.close();
+
+            QString filename3 = dirname3 + "\\" + QString().sprintf("%06d.dep", record2_count);
+            QFile file3(filename3);
+            file3.open(QIODevice::WriteOnly);
+            file3.write((char*)k4a_image_get_buffer(depth_frame), k4a_image_get_size(depth_frame));
+            file3.close();
+         
+            record2_count++;
         }
 
         k4a_image_release(color_frame);
@@ -412,58 +502,554 @@ void QtWidgetsApplication1::readKinect() {
 }
 
 
-void QtWidgetsApplication1::camera1_write() {
-    int count1 = 0;
-    char save_name[32];
-    while (true) {
-        if (stop_record && camera1_frames_queue.empty()) {
-            camera1_writer->release();
-            return;
-        }
-        camera1_frames_mutex.lock();
-        while (camera1_frames_queue.empty()) {
-            camera1_frames_wait.wait(&camera1_frames_mutex);
-            if (stop_record && camera1_frames_queue.empty()) continue;
-        }
-        cv::Mat mat = camera1_frames_queue.front();
-        camera1_frames_queue.pop_front();
-        camera1_frames_mutex.unlock();
-        //cv::cvtColor(mat, mat, cv::COLOR_RGB2BGR);
-        /*QTime qtime;
-        qtime.start();
-        //camera1_writer->write(mat);
-        sprintf(save_name, "out\\tmp%05d", count1);
-        FILE* file = fopen(save_name, "wb");
-        fwrite(mat.data, 1, mat.total()*mat.elemSize(), file);
-        fclose(file);
-        qDebug() << qtime.elapsed();*/
-        //qDebug() << "Camera1 write frames " << count1++;
+int QtWidgetsApplication1::createVideo(const QString &dirname, const QString &outfile) {
+    int filescount = subFilescount(dirname);
+    if (filescount == 0) return 0;
+    qDebug() << "The number of jpeg images is " << filescount;
+
+    AVFormatContext* ifmtCtx = NULL;
+    AVFormatContext* ofmtCtx = NULL;
+    AVPacket pkt;
+    AVFrame* imageFrame, *imageFrameYUV;
+    SwsContext* pImgConvertCtx;
+    AVDictionary* params = NULL;
+    AVCodec* imageCodec;
+    AVCodecContext* imageCodecCtx;
+    unsigned char* outBuffer;
+    AVCodecContext* videoCodecCtx;
+    AVCodec* videoCodec;
+    AVDictionary* options = NULL;
+    int index = 0, ret = 0;
+
+    avdevice_register_all();
+
+    ui.progressBar->setRange(0, filescount-1);
+    ui.progressBar->reset();
+
+    QString filename = dirname + "\\000000.jpeg";
+    if (avformat_open_input(&ifmtCtx, filename.toStdString().c_str(), NULL, NULL) != 0) {
+        qDebug() << "Can't open input file.";
+        goto end;
     }
+    qDebug() << filename;
     
+    if (avformat_find_stream_info(ifmtCtx, NULL) < 0)
+    {
+        qDebug() << "Couldn't find stream information.\n";
+        goto end;
+    }
+    for (int i = 0; i < ifmtCtx->nb_streams; ++i)
+    {
+        if (ifmtCtx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO)
+        {
+            index = i;
+            break;
+        }
+    }
+
+    av_dump_format(ifmtCtx, 0, NULL, 0);
+
+    // 查找输入解码器
+    imageCodec = avcodec_find_decoder(ifmtCtx->streams[index]->codecpar->codec_id);
+    if (!imageCodec)
+    {
+        qDebug() << "can't find codec";
+        goto end;
+    }
+
+    imageCodecCtx = avcodec_alloc_context3(imageCodec);
+    if (!imageCodecCtx)
+    {
+        qDebug() << "can't alloc codec context";
+        goto end;
+    }
+
+    avcodec_parameters_to_context(imageCodecCtx, ifmtCtx->streams[index]->codecpar);
+    //qDebug() << imageCodecCtx->codec_id << " - " << imageCodecCtx->codec_type << " - " << imageCodecCtx->pix_fmt;
+    //  1.5 打开输入解码器
+    if (avcodec_open2(imageCodecCtx, imageCodec, NULL) < 0)
+    {
+        qDebug() << "can't open codec";
+        goto end;
+    }
+
+    imageFrame = av_frame_alloc();
+    imageFrameYUV = av_frame_alloc();
+
+    videoCodec = avcodec_find_encoder(AV_CODEC_ID_MPEG4);
+    if (!videoCodec) {
+        qDebug() << "Can't fine H264 codec.";
+        goto end;
+    }
+
+    videoCodecCtx = avcodec_alloc_context3(videoCodec);
+    videoCodecCtx->codec_id = AV_CODEC_ID_MPEG4;
+    videoCodecCtx->codec_type = AVMEDIA_TYPE_VIDEO;
+    videoCodecCtx->pix_fmt = AV_PIX_FMT_YUV420P;
+    videoCodecCtx->width = imageCodecCtx->width;
+    videoCodecCtx->height = imageCodecCtx->height;
+    videoCodecCtx->time_base.num = 1;
+    videoCodecCtx->time_base.den = 30;
+    videoCodecCtx->bit_rate = 5000000;
+    videoCodecCtx->gop_size = 20;
+    videoCodecCtx->qmin = 10;
+    videoCodecCtx->qmax = 51;
+
+    if (videoCodecCtx->flags & AVFMT_GLOBALHEADER)
+    {
+        videoCodecCtx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+    }
+
+    av_dict_set(&params, "preset", "superfast", 0);
+    av_dict_set(&params, "tune", "zerolatency", 0);	//实现实时编码
+    if (avcodec_open2(videoCodecCtx, videoCodec, &params) < 0)
+    {
+        qDebug() << "can't open video encoder.";
+        goto end;
+    }
+
+    avformat_alloc_output_context2(&ofmtCtx, NULL, NULL, outfile.toStdString().c_str());
+    if (!ofmtCtx) {
+        qDebug() << "Can't create output context.";
+        goto end;
+    }
+
+    for (int i = 0; i < ifmtCtx->nb_streams; ++i)
+    {
+        AVStream* outStream = avformat_new_stream(ofmtCtx, NULL);
+        if (!outStream)
+        {
+            qDebug() << "failed to allocate output stream";
+            goto end;
+        }
+
+        avcodec_parameters_from_context(outStream->codecpar, videoCodecCtx);
+    }
+
+    av_dump_format(ofmtCtx, 0, outfile.toStdString().c_str(), 1);
+
+    if (!(ofmtCtx->oformat->flags & AVFMT_NOFILE))
+    {
+        // 2.3 创建并初始化一个AVIOContext, 用以访问URL（outFilename）指定的资源
+        ret = avio_open(&ofmtCtx->pb, outfile.toStdString().c_str(), AVIO_FLAG_WRITE);
+        if (ret < 0)
+        {
+            qDebug() << "can't open output URL: " << outfile.toStdString().c_str();
+            goto end;
+        }
+    }
+
+    AVDictionary* opt = NULL;
+    av_dict_set_int(&opt, "video_track_timescale", 30, 0);
+    ret = avformat_write_header(ofmtCtx, NULL);
+    if (ret < 0)
+    {
+        qDebug() << "Error accourred when opening output file";
+        goto end;
+    }
+
+    imageFrame = av_frame_alloc();
+    imageFrameYUV = av_frame_alloc();
+
+    AVPixelFormat convertFormat = AV_PIX_FMT_YUV420P;
+    /*if (imageCodecCtx->pix_fmt == AV_PIX_FMT_YUVJ420P) {
+        convertFormat = AV_PIX_FMT_YUV420P;
+    }
+    else if (imageCodecCtx->pix_fmt == AV_PIX_FMT_YUVJ422P) {
+        convertFormat = AV_PIX_FMT_YUV422P;
+    }*/
+
+    outBuffer = (unsigned char*)av_malloc(
+        av_image_get_buffer_size(AV_PIX_FMT_YUV420P, imageCodecCtx->width,
+            imageCodecCtx->height, 1));
+    av_image_fill_arrays(imageFrameYUV->data, imageFrameYUV->linesize, outBuffer,
+        convertFormat, imageCodecCtx->width, imageCodecCtx->height, 1);
+
+    pImgConvertCtx = sws_getContext(imageCodecCtx->width, imageCodecCtx->height,
+        imageCodecCtx->pix_fmt, imageCodecCtx->width, imageCodecCtx->height,
+        convertFormat, SWS_BICUBIC, NULL, NULL, NULL);
+    
+
+    int frameIndex = 0;
+    while (frameIndex < filescount) {
+        ui.progressLabel->setText(QString().sprintf("Encoding video: %d/%d -> ", frameIndex, filescount - 1) + outfile);
+        ui.progressBar->setValue(frameIndex);
+        
+        filename = dirname + QString().sprintf("\\%06d.jpeg", frameIndex);
+        //qDebug() << filename;
+        avformat_free_context(ifmtCtx);
+        ifmtCtx = NULL;
+        ret = avformat_open_input(&ifmtCtx, filename.toStdString().c_str(), NULL, NULL);
+        if (ret != 0) {
+            qDebug() << "Can't open input file.";
+            goto end;
+        }
+        
+        ret = av_read_frame(ifmtCtx, &pkt);
+
+        if (ret < 0) {
+            break;
+        }
+
+
+        ret = avcodec_send_packet(imageCodecCtx, &pkt);
+        if (ret < 0) {
+            qDebug() << "Decode error.";
+            goto end;
+        }
+
+        if (avcodec_receive_frame(imageCodecCtx, imageFrame) >= 0) {
+            sws_scale(pImgConvertCtx,
+                (const unsigned char* const*)imageFrame->data,
+                imageFrame->linesize, 0, imageCodecCtx->height, imageFrameYUV->data,
+                imageFrameYUV->linesize);
+
+            imageFrameYUV->format = AV_PIX_FMT_YUV420P;
+            imageFrameYUV->width = imageCodecCtx->width;
+            imageFrameYUV->height = imageCodecCtx->height;
+
+            ret = avcodec_send_frame(videoCodecCtx, imageFrameYUV);
+            if (ret < 0) {
+                qDebug() << "failed to encode.";
+                goto end;
+            }
+
+            if (avcodec_receive_packet(videoCodecCtx, &pkt) >= 0) {
+                // 设置输出DTS,PTS
+                pkt.pts = pkt.dts = frameIndex * (ofmtCtx->streams[0]->time_base.den) / ofmtCtx->streams[0]->time_base.num / 30;
+                frameIndex++;
+
+                ret = av_interleaved_write_frame(ofmtCtx, &pkt);
+                if (ret < 0) {
+                    qDebug() << "send packet failed: " << ret;
+                }
+            }
+        }
+        av_packet_unref(&pkt);
+        avformat_close_input(&ifmtCtx);
+    }
+    av_write_trailer(ofmtCtx);
+
+end:
+    avformat_close_input(&ifmtCtx);
+
+    /* close output */
+    if (ofmtCtx && !(ofmtCtx->oformat->flags & AVFMT_NOFILE)) {
+        avio_closep(&ofmtCtx->pb);
+    }
+    avformat_free_context(ofmtCtx);
+    av_free(outBuffer);
+    if (ret < 0 && ret != AVERROR_EOF) {
+        qDebug() << "Error occurred";
+        ui.progressLabel->setText("Encode Error");
+        ui.progressBar->setValue(filescount - 1);
+        return -1;
+    }
+    qDebug() << "Encode Successfully"; 
+    ui.progressLabel->setText("Encode Successfully");
+    ui.progressBar->setValue(filescount - 1);
+
+    return 0;
 }
 
+int QtWidgetsApplication1::initImuSensor() {
+    ZenSetLogLevel(ZenLogLevel_Debug);
 
-void QtWidgetsApplication1::camera2_write() {
-    /*std::string command = "ffmpeg -y -f rawvideo -vcodec mjpeg -s 1920x1080 -framerate 30 -i - -vcodec copy test.avi";
-    FILE* pipeout = _popen(command.data(), "w");*/
-    int count2 = 0;
-    while (true) {
-        if (stop_record && camera2_frames_queue.empty()) {
-            camera2_writer->release();
-            return;
-        }
-        camera2_frames_mutex.lock();
-        while (camera2_frames_queue.empty()) {
-            camera2_frames_wait.wait(&camera2_frames_mutex);
-            if (stop_record && camera2_frames_queue.empty()) continue;
-        }
-        cv::Mat mat = camera2_frames_queue.front();
-        camera2_frames_queue.pop_front();
-        camera2_frames_mutex.unlock();
-        
-        //cv::cvtColor(mat, mat, cv::COLOR_YUV2BGR_YUY2);
-        //camera2_writer->write(mat);
-        
-        //qDebug() << "Camera2 write frames " << count2++;
+    auto clientPair = make_client();
+    auto& clientError = clientPair.first;
+    auto& zenclient = clientPair.second;
+    if (clientError) {
+        return -1;
     }
+
+    //zenclient = new ZenClient(std::move(clientPair.second));
+
+    if (auto error = zenclient.listSensorsAsync()) {
+        zenclient.close();
+        return -1;
+    }
+
+    std::vector<ZenEventData_SensorFound> g_discoveredSensors;
+    std::vector<ZenSensorComponent> imu_handles;
+    std::vector<ZenSensor> sensors;
+    std::vector<std::string> sensors_name;
+    std::vector<unsigned int> sensors_idx;
+    std::vector<unsigned int> count;
+    std::vector<ZenImuData> imudata;
+    int imu_number = 0;
+    int count2 = 0;
+    while (!stop_camera) {
+        const auto pair = zenclient.waitForNextEvent();
+        const bool success = pair.first;
+        auto& event = pair.second;
+        if (!success) {
+            break;
+        }
+        if (!event.component.handle) {
+            if (event.eventType == ZenEventType_SensorFound) {
+                g_discoveredSensors.push_back(event.data.sensorFound);
+            }
+            else if (event.eventType == ZenEventType_SensorListingProgress) {
+                if (event.data.sensorListingProgress.progress == 1.0f) {
+                    if (g_discoveredSensors.empty()) {
+                        qDebug() << "-- no sensors found -- ";
+                        break;
+                    }
+                    for (int i = 0; i < g_discoveredSensors.size(); i++) {
+                        std::string sensor_name = g_discoveredSensors[i].name;
+                        if (sensor_name.substr(0, 4) == "LPMS") {
+                            qDebug() << i << g_discoveredSensors[i].name << " (" << g_discoveredSensors[i].ioType << ") ";
+                            sensors_idx.push_back(i);
+                            sensors_name.push_back(sensor_name);
+                        }
+                    }
+                    emit ready_to_appendlog(QString().fromLocal8Bit("提示：正在尝试初始化IMU传感器，请耐心等待..."));
+                    for (int i = 0; i < sensors_idx.size(); i++) {
+
+                    /*    int reconnect = 0;
+                    repeat:
+                        auto sensorPair = zenclient.obtainSensor(g_discoveredSensors[sensors_idx[i]]);
+                        auto obtainError = sensorPair.first;
+                        auto& sensor = sensorPair.second;
+                        if (obtainError && reconnect++ < 3) {
+                            goto repeat;
+                        }
+                        if (obtainError) {
+                            qDebug() << "Connect Senesor Failed.";
+                            emit ready_to_appendlog(QString().fromLocal8Bit("错误：连接IMU传感器失败，请检查设备是否正常运行后重新启动程序."));
+                            zenclient.close();
+                            return -1;
+                        }
+                        auto imuPair = sensor.getAnyComponentOfType(g_zenSensorType_Imu);
+                        auto& hasImu = imuPair.first;
+                        auto imu = imuPair.second;
+                        if (!hasImu) {
+                            zenclient.close();
+                            return -1;
+                        }
+                        sensors.emplace_back(std::move(sensor));
+                        imu_handles.emplace_back(imu);
+                        count.push_back(0);
+                        auto res = imu.getInt32Property(ZenImuProperty_SamplingRate);
+                        if (res.first) {
+                            zenclient.close();
+                            return -1;
+                        }
+                        qDebug() << "Sampling Rate :" << res.second;
+                        if (auto error = imu.setBoolProperty(ZenImuProperty_StreamData, true)) {
+                            zenclient.close();
+                            return -1;
+                        }
+                        /*if (auto error = imu.setInt32Property(ZenImuProperty_SamplingRate, 50)) {
+                            zenclient.close();
+                            return -1;
+                        }*/
+                        
+                        imu_number++;
+                    }
+                    /*
+                    for (auto& imu : imu_handles) {
+                        imu.executeProperty(ZenImuProperty_StartSensorSync);
+                    }
+                    QThread::msleep(3000);
+                    for (auto& imu : imu_handles) {
+                        imu.executeProperty(ZenImuProperty_StopSensorSync);
+                    }  
+                    imudata.resize(imu_number);
+                    emit ready_to_initimu(&sensors_name);
+                    */
+                }
+            }
+        }
+        else if (event.eventType == ZenEventType_ImuData) {
+                //if (can_write_imudata || count2++ % 10 == 0) {
+                    //qDebug() << count2;
+                    int idx = -1;
+                    for (unsigned i = 0; i < sensors.size(); i++) {
+                        if (event.sensor == sensors[i].sensor()) {
+                            idx = i;
+                            break;
+                        }
+                    }
+                    //qDebug() << " ----------Index = " << idx;
+                    if (idx == -1) break;
+                    imudata[idx] = event.data.imuData;
+                    count[idx]++;
+                    bool flag = true;
+                    for (int i = 0; i < imu_number; i++) {
+                        if (count[i] == 0) {
+                            flag = false;
+                            break;
+                        }
+                    }
+                    if (flag) {
+                        //qDebug() << "         " << count2;
+                        for (int i = 0; i < imu_number; i++) {
+                            count[i] = 0;
+                        }
+                        if (can_write_imudata) {
+                            QString filename4 = dirname4 + "\\" + QString().sprintf("%06d.txt", record2_count);
+                            writeImuData(filename4, imudata, sensors_name);
+                            can_write_imudata = false;
+                        }
+                        emit ready_to_updateimu(&imudata);
+                    }
+                    count2++;
+        }
+        else if (event.eventType == ZenEventType_SensorDisconnected) {
+            int idx = -1;
+            for (unsigned i = 0; i < sensors.size(); i++) {
+                if (event.sensor == sensors[i].sensor()) {
+                    idx = i;
+                    break;
+                }
+            }
+            if (idx == -1) break;
+            emit ready_to_appendlog(QString().fromLocal8Bit("警告：IMU传感器失去连接..."));
+        }
+    }
+
+end:
+    for (auto& sensor : sensors) {
+        sensor.release();
+    }
+    zenclient.close();
+    return 0;
+}
+
+void QtWidgetsApplication1::readImuSensor(std::string& io_type, std::string& sensor_name, int index) {
+    auto clientPair = make_client();
+    auto& clientError = clientPair.first;
+    auto& zenclient = clientPair.second;
+    if (clientError) {
+        return;
+    }
+    /*
+    if (auto error = zenclient.listSensorsAsync()) {
+        zenclient.close();
+        return;
+    }*/
+    int reconnect = 0;
+repeat:
+    auto sensorPair = zenclient.obtainSensorByName(io_type, sensor_name);
+    auto obtainError = sensorPair.first;
+    auto& sensor = sensorPair.second;
+    if (obtainError && reconnect++ < 3) {
+        goto repeat;
+    }
+    if (obtainError) {
+        zenclient.close();
+        return;
+    }
+    auto imuPair = sensor.getAnyComponentOfType(g_zenSensorType_Imu);
+    auto& hasImu = imuPair.first;
+    auto imu = imuPair.second;
+    if (!hasImu) {
+        zenclient.close();
+        return;
+    }
+    if (auto error = imu.setBoolProperty(ZenImuProperty_StreamData, true)) {
+        zenclient.close();
+        return;
+    }
+    int last_record = -1;
+    QFile file(save_path + "\\" + QString().fromStdString(sensor_name) + ".txt");
+    file.open(QIODevice::WriteOnly);
+    QTextStream out(&file);
+    //out.setRealNumberNotation(QTextStream::FixedNotation);
+    //out.setRealNumberPrecision(3);
+    while (!stop_camera) {
+        const auto pair = zenclient.waitForNextEvent();
+        const bool success = pair.first;
+        auto& event = pair.second;
+        if (!success) {
+            break;
+        }
+        if (event.eventType == ZenEventType_ImuData) {
+            if (last_record != record2_count) {
+                last_record = record2_count;
+                writeImuData2(out, event.data.imuData, last_record);
+                //todo
+                emit ready_to_updateimu(event.data.imuData, index);
+            }
+        }
+    }
+    file.close();
+}
+
+void QtWidgetsApplication1::initSensorTable(std::vector<std::string> *sensors_name) {
+    int num = (*sensors_name).size();
+    ui.sensortable->setColumnCount(7);
+    ui.sensortable->setRowCount(2 + num);
+    ui.sensortable->verticalHeader()->setVisible(false);
+    ui.sensortable->horizontalHeader()->setVisible(false);
+    ui.sensortable->setShowGrid(false);
+    ui.sensortable->setFocusPolicy(Qt::NoFocus);
+    ui.sensortable->setFrameShape(QFrame::NoFrame);
+    ui.sensortable->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    ui.sensortable->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    ui.sensortable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    ui.sensortable->setStyleSheet("background-color:rgba(0,0,0,0)");
+    ui.sensortable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    ui.sensortable->setVisible(true);
+
+    ui.sensortable->setSpan(0, 0, 2, 1);
+    ui.sensortable->setSpan(0, 1, 1, 3);
+    ui.sensortable->setSpan(0, 4, 1, 3);
+
+    ui.sensortable->setItem(0, 0, new QTableWidgetItem("Sensor"));
+    ui.sensortable->item(0, 0)->setTextAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
+    ui.sensortable->setItem(0, 1, new QTableWidgetItem("Accleration"));
+    ui.sensortable->item(0, 1)->setTextAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
+    ui.sensortable->setItem(0, 4, new QTableWidgetItem("Gyroscope"));
+    ui.sensortable->item(0, 4)->setTextAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
+    ui.sensortable->setItem(1, 1, new QTableWidgetItem("X"));
+    ui.sensortable->item(1, 1)->setTextAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
+    ui.sensortable->setItem(1, 2, new QTableWidgetItem("Y"));
+    ui.sensortable->item(1, 2)->setTextAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
+    ui.sensortable->setItem(1, 3, new QTableWidgetItem("Z"));
+    ui.sensortable->item(1, 3)->setTextAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
+    ui.sensortable->setItem(1, 4, new QTableWidgetItem("X"));
+    ui.sensortable->item(1, 4)->setTextAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
+    ui.sensortable->setItem(1, 5, new QTableWidgetItem("Y"));
+    ui.sensortable->item(1, 5)->setTextAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
+    ui.sensortable->setItem(1, 6, new QTableWidgetItem("Z"));
+    ui.sensortable->item(1, 6)->setTextAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
+
+    for (int i = 2; i < ui.sensortable->rowCount(); i++) {
+        ui.sensortable->setItem(i, 0, new QTableWidgetItem(QString().fromStdString((*sensors_name)[i - 2])));
+        ui.sensortable->item(i, 0)->setTextAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
+        for (int j = 1; j < ui.sensortable->columnCount(); j++) {
+            ui.sensortable->setItem(i, j, new QTableWidgetItem(" - "));
+            ui.sensortable->item(i, j)->setTextAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
+        }
+    }
+    ui.logBrowser->append(QString().fromLocal8Bit("提示：初始化IMU传感器成功."));
+}
+
+/*
+void QtWidgetsApplication1::updateSensorTable(std::vector<ZenImuData> *imudata) {
+    //qDebug() << "Start Update.";
+    if (stop_camera) return;
+    for (int i = 0; i < (*imudata).size(); i++) {
+        for (int j = 0; j < 3; j++) {
+            ui.sensortable->item(i + 2, j + 1)->setText(QString().sprintf("%.3f", (*imudata)[i].a[j]));
+            ui.sensortable->item(i + 2, j + 4)->setText(QString().sprintf("%.3f", (*imudata)[i].g[j]));
+        }
+    }
+    //qDebug() << "Update Successful.";
+}
+*/
+void QtWidgetsApplication1::updateSensorTable(ZenImuData imudata, int col) {
+    //qDebug() << "Start Update.";
+    if (stop_camera) return;
+    for (int j = 0; j < 3; j++) {
+        ui.sensortable->item(col + 2, j + 1)->setText(QString().sprintf("%.3f", imudata.a[j]));
+        ui.sensortable->item(col + 2, j + 4)->setText(QString().sprintf("%.3f", imudata.g[j]));
+    }
+    //qDebug() << "Update Successful.";
+}
+
+void QtWidgetsApplication1::appendLog(QString text) {
+    ui.logBrowser->append(text);
 }

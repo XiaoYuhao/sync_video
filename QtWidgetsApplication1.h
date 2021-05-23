@@ -3,7 +3,8 @@
 #include <QtWidgets/QMainWindow>
 #include "ui_QtWidgetsApplication1.h"
 #include "setupwindow.h"
-#include "opencv2/opencv.hpp"
+#include "openzen/OpenZen.h"
+#include "openzen/ZenTypes.h"
 #include "kinect/k4a.h"
 #include <QTimer>
 #include <QThread>
@@ -15,6 +16,7 @@
 #include <QMenu>
 #include <QSettings>
 #include <QDebug>
+#include <QMetaType>
 #include <cstdio>
 #include "utils.h"
 
@@ -23,6 +25,10 @@ extern "C" {
 #include "ffmpeg/libavcodec/avcodec.h"
 #include "ffmpeg/libavdevice/avdevice.h"
 }
+
+Q_DECLARE_METATYPE(std::vector<std::string>*);
+//Q_DECLARE_METATYPE(std::vector<ZenImuData>*);
+Q_DECLARE_METATYPE(ZenImuData);
 
 class QtWidgetsApplication1 : public QMainWindow
 {
@@ -37,22 +43,16 @@ private:
 
 private:
     setupwindow setupwin;
-    cv::VideoCapture capture;
-    cv::VideoWriter* camera1_writer;
-    cv::VideoWriter* camera2_writer;
-    cv::VideoWriter* camera3_writer;
 
-    QTimer* camera_timer;
+    QTimer* show_timer;
+    QTimer* write_timer;
     QTimer* time_timer;
-    cv::Mat camera1_color_frame;
-    bool stop_camera, stop_record, can_release;
+
+    bool stop_camera, stop_record;
     QTime start_time;
 
     QSettings* settings;
 
-    cv::Mat camera2_color_frame;
-    cv::Mat camera2_depth_frame;
-    cv::Mat camera2_ir_frame;
 
     bool camera1_show_ready;
     bool camera2_show_ready;
@@ -60,34 +60,33 @@ private:
     QString save_path;
     int save_image_count;
 
-    QQueue<cv::Mat> camera1_frames_queue;
-    QQueue<cv::Mat> camera2_frames_queue;
-
-    QMutex camera1_frames_mutex;
-    QMutex camera2_frames_mutex;
-    QWaitCondition camera1_frames_wait;
-    QWaitCondition camera2_frames_wait;
-
-    FILE* ffmpeg_pipe1;
-    FILE* ffmpeg_pipe2;
-
-    int record_count;
-    AVPacket show_pkt;
+    int record1_count, record2_count;
+    AVPacket camera1_show_pkt, camera2_show_pkt;
     k4a_image_t show_color;
-    k4a_image_t show_depth;
 
-    QString dirname1, dirname2, dirname3;
+    QString dirname1, dirname2, dirname3, dirname4;
 
-    AVCodec* pCodec;
-    AVCodecContext* pCodecCtx;
-    AVFrame *pFrame, *pFrameRGB;
+    AVCodec* camera1_pCodec, *camera2_pCodec;
+    AVCodecContext* camera1_pCodecCtx, *camera2_pCodecCtx;
+    AVFrame *pFrame;
 
+    //zen::ZenClient *zenclient;
+    //std::vector<ZenImuData> imudata;
+    bool can_write_imudata;
+
+
+signals:
+    void ready_to_show();
+    void ready_to_initimu(std::vector<std::string>*);
+    //void ready_to_updateimu(std::vector<ZenImuData>*);
+    void ready_to_updateimu(ZenImuData, int);
+    void ready_to_appendlog(QString);
  
 private slots:
-    void importFrame();
     void start_botton_clicked();
     void stop_botton_clicked();
     void close_botton_clicked();
+    void tool_botton_clicked();
     
     void updateTime();
     void openSetupWindow();
@@ -95,6 +94,15 @@ private slots:
     void readCamera();
     void readKinect();
 
-    void camera1_write();
-    void camera2_write();
+    void importFrame();
+    //void writeFrame();
+
+    int createVideo(const QString &dirname, const QString &outfile);
+
+    int initImuSensor();
+    void readImuSensor(std::string& io_type, std::string& sensor_name, int index);
+    void initSensorTable(std::vector<std::string>*);
+    //void updateSensorTable(std::vector<ZenImuData>*);
+    void updateSensorTable(ZenImuData, int);
+    void appendLog(QString);
 };

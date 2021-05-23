@@ -18,8 +18,12 @@ std::atomic_bool g_terminate(false);
 
 std::atomic<uintptr_t> g_imuHandle;
 
+
 using namespace zen;
 
+std::vector<ZenSensorComponent> imu_handles;
+std::vector<ZenSensor> sensors;
+std::vector<unsigned int> count;
 namespace
 {
     void addDiscoveredSensor(const ZenEventData_SensorFound& desc)
@@ -32,6 +36,7 @@ namespace
 void pollLoop(std::reference_wrapper<ZenClient> client)
 {
     unsigned int i = 0;
+   
     while (!g_terminate)
     {
         const auto pair = client.get().waitForNextEvent();
@@ -52,11 +57,26 @@ void pollLoop(std::reference_wrapper<ZenClient> client)
                     g_discoverCv.notify_one();
             }
         }
-        else if ((g_imuHandle > 0) && (event.component.handle == g_imuHandle))
+        else if (imu_handles.size() > 0)
         {
+            /*for (auto& imu_handle : imu_handles) {
+                if (imu_handle == event.component.handle) {
+
+                }
+            }*/
+            
             if (event.eventType == ZenEventType_ImuData)
             {
-                if (i++ % 100 == 0) {
+                unsigned idx = -1;
+                for (unsigned i = 0; i < sensors.size(); i++) {
+                    if (event.sensor == sensors[i].sensor()) {
+                        idx = i;
+                        break;
+                    }
+                }
+                if (count[idx]++ % 40 == 0) {
+                    std::cout << g_discoveredSensors[idx].name << std::endl;
+                    std::cout << event.data.imuData.frameCount << " - " << event.data.imuData.timestamp << std::endl;
                     std::cout << "Event type: " << event.eventType << std::endl;
                     std::cout << "> Event component: " << uint32_t(event.component.handle) << std::endl;
                     std::cout << "> Acceleration: \t x = " << event.data.imuData.a[0]
@@ -112,17 +132,72 @@ int imu_test()
         return ZenError_Unknown;
     }
 
-    for (unsigned idx = 0; idx < g_discoveredSensors.size(); ++idx)
-        std::cout << idx << ": " << g_discoveredSensors[idx].name << " (" << g_discoveredSensors[idx].ioType << ")" << std::endl;
+    std::vector<unsigned int> sensor_idx;
 
+    for (unsigned idx = 0; idx < g_discoveredSensors.size(); ++idx) {
+        std::cout << idx << ": " << g_discoveredSensors[idx].name << " (" << g_discoveredSensors[idx].ioType << ")" << std::endl;
+        std::string sensor_name = g_discoveredSensors[idx].name;
+        if (sensor_name.substr(0, 4) == "LPMS") {
+            sensor_idx.push_back(idx);
+        }
+    }
+    /*
     unsigned int idx;
     do
     {
         std::cout << "Provide an index within the range 0-" << g_discoveredSensors.size() - 1 << ":" << std::endl;
         std::cin >> idx;
     } while (idx >= g_discoveredSensors.size());
-    std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+    std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');*/
 
+    
+    for (unsigned i = 0; i < sensor_idx.size(); i++) {
+        unsigned idx = sensor_idx[i];
+        auto sensorPair = client.obtainSensor(g_discoveredSensors[idx]);
+        auto& obtainError = sensorPair.first;
+        auto& sensor = sensorPair.second;
+        if (obtainError) {
+            g_terminate = true;
+            client.close();
+            pollingThread.join();
+            return obtainError;
+        }
+        auto imuPair = sensor.getAnyComponentOfType(g_zenSensorType_Imu);
+        auto& hasImu = imuPair.first;
+        auto imu = imuPair.second;
+        if (!hasImu)
+        {
+            g_terminate = true;
+            client.close();
+            pollingThread.join();
+            return ZenError_WrongSensorType;
+        }
+        sensors.emplace_back(std::move(sensor));
+        imu_handles.emplace_back(imu);
+        count.emplace_back(0);
+        if (auto error = imu.setBoolProperty(ZenImuProperty_StreamData, true))
+        {
+            g_terminate = true;
+            client.close();
+            pollingThread.join();
+            return error;
+        }
+        
+    }
+    
+    
+    for (auto& imu : imu_handles) {
+        imu.executeProperty(ZenImuProperty_StartSensorSync);
+    }
+    for (unsigned int i = 0; i < count.size(); i++) {
+        count[i] = 0;
+    }
+    std::this_thread::sleep_for(std::chrono::seconds(3));
+    for (auto& imu : imu_handles) {
+        imu.executeProperty(ZenImuProperty_StopSensorSync);
+    }
+    
+    /*
     auto sensorPair = client.obtainSensor(g_discoveredSensors[idx]);
     auto& obtainError = sensorPair.first;
     auto& sensor = sensorPair.second;
@@ -176,7 +251,7 @@ int imu_test()
         pollingThread.join();
         return error;
     }
-
+    */
     std::string line;
     while (!g_terminate)
     {
@@ -188,8 +263,10 @@ int imu_test()
         {
             if (line == "q")
                 g_terminate = true;
-            else if (line == "r")
-                sensor.release();
+            else if (line == "r"){}
+                for (auto& sensor : sensors) {
+                    sensor.release();
+                }
         }
     }
 

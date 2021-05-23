@@ -1,5 +1,5 @@
 #include "camera.h"
-
+#include "utils.h"
 using namespace cv;
 
 
@@ -463,3 +463,235 @@ int JPEGtoRGB(AVPacket* pkt, AVCodecContext* pCodecCtx, AVFrame* pFrame, QImage 
 
 
 
+int JPEGtoVideo(const QString& dirname) {
+	int filescount = subFilescount(dirname) - 2;
+	if (filescount == 0) return 0;
+
+
+	AVFormatContext* ifmtCtx = NULL;
+	AVFormatContext* ofmtCtx = NULL;
+	AVPacket pkt;
+	AVFrame* pFrame, * pFrameYUV;
+	SwsContext* pImgConvertCtx;
+	AVDictionary* params = NULL;
+	AVCodec* pCodec;
+	AVCodecContext* pCodecCtx;
+	unsigned char* outBuffer;
+	AVCodecContext* videoCodecCtx;
+	AVCodec* videoCodec;
+	AVDictionary* options = NULL;
+	int index = 0, ret = 0;
+
+	avdevice_register_all();
+
+	const char* outfile = "..\\camera1.avi";
+	QString filename = dirname + "\\000000.jpeg";
+	
+	if (avformat_open_input(&ifmtCtx, filename.toStdString().c_str(), NULL, NULL) != 0) {
+		qDebug() << "Can't open input file.";
+		return -1;
+	}
+	qDebug() << filename;
+	if (avformat_find_stream_info(ifmtCtx, NULL) < 0)
+	{
+		qDebug() << "Couldn't find stream information.\n";
+		return -1;
+	}
+	for (int i = 0; i < ifmtCtx->nb_streams; ++i)
+	{
+		if (ifmtCtx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO)
+		{
+			index = i;
+			break;
+		}
+	}
+
+	av_dump_format(ifmtCtx, 0, NULL, 0);
+
+	// 查找输入解码器
+	pCodec = avcodec_find_decoder(ifmtCtx->streams[index]->codecpar->codec_id);
+	if (!pCodec)
+	{
+		qDebug() << "can't find codec";
+		return -1;
+	}
+
+	pCodecCtx = avcodec_alloc_context3(pCodec);
+	if (!pCodecCtx)
+	{
+		qDebug() << "can't alloc codec context";
+		return -1;
+	}
+
+	avcodec_parameters_to_context(pCodecCtx, ifmtCtx->streams[index]->codecpar);
+
+	//  1.5 打开输入解码器
+	if (avcodec_open2(pCodecCtx, pCodec, NULL) < 0)
+	{
+		printf("can't open codec\n");
+		return -1;
+	}
+
+	pFrame = av_frame_alloc();
+	pFrameYUV = av_frame_alloc();
+
+	videoCodec = avcodec_find_encoder(AV_CODEC_ID_H264);
+	if (!videoCodec) {
+		qDebug() << "Can't fine H264 codec.";
+		return -1;
+	}
+
+	videoCodecCtx = avcodec_alloc_context3(videoCodec);
+	videoCodecCtx->codec_id = AV_CODEC_ID_H264;
+	videoCodecCtx->codec_type = AVMEDIA_TYPE_VIDEO;
+	videoCodecCtx->pix_fmt = AV_PIX_FMT_YUV420P;
+	videoCodecCtx->width = pCodecCtx->width;
+	videoCodecCtx->height = pCodecCtx->height;
+	videoCodecCtx->time_base.num = 1;
+	videoCodecCtx->time_base.den = 30;
+	videoCodecCtx->bit_rate = 1000000;
+	videoCodecCtx->gop_size = 20;
+	videoCodecCtx->qmin = 10;
+	videoCodecCtx->qmax = 51;
+
+	if (videoCodecCtx->flags & AVFMT_GLOBALHEADER)
+	{
+		videoCodecCtx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+	}
+
+	av_dict_set(&params, "preset", "superfast", 0);
+	av_dict_set(&params, "tune", "zerolatency", 0);	//实现实时编码
+	if (avcodec_open2(videoCodecCtx, videoCodec, &params) < 0)
+	{
+		printf("can't open video encoder.\n");
+		return -1;
+	}
+
+	avformat_alloc_output_context2(&ofmtCtx, NULL, NULL, outfile);
+	if (!ofmtCtx) {
+		qDebug() << "Can't create output context.";
+		return -1;
+	}
+
+	for (int i = 0; i < ifmtCtx->nb_streams; ++i)
+	{
+		AVStream* outStream = avformat_new_stream(ofmtCtx, NULL);
+		if (!outStream)
+		{
+			printf("failed to allocate output stream\n");
+			goto end;
+		}
+
+		avcodec_parameters_from_context(outStream->codecpar, videoCodecCtx);
+	}
+
+	av_dump_format(ofmtCtx, 0, outfile, 1);
+
+	if (!(ofmtCtx->oformat->flags & AVFMT_NOFILE))
+	{
+		// 2.3 创建并初始化一个AVIOContext, 用以访问URL（outFilename）指定的资源
+		ret = avio_open(&ofmtCtx->pb, outfile, AVIO_FLAG_WRITE);
+		if (ret < 0)
+		{
+			printf("can't open output URL: %s\n", outfile);
+			goto end;
+		}
+	}
+
+	AVDictionary* opt = NULL;
+	av_dict_set_int(&opt, "video_track_timescale", 30, 0);
+	ret = avformat_write_header(ofmtCtx, NULL);
+	if (ret < 0)
+	{
+		printf("Error accourred when opening output file\n");
+		goto end;
+	}
+
+	pFrame = av_frame_alloc();
+	pFrameYUV = av_frame_alloc();
+
+	outBuffer = (unsigned char*)av_malloc(
+		av_image_get_buffer_size(AV_PIX_FMT_YUV420P, pCodecCtx->width,
+			pCodecCtx->height, 1));
+	av_image_fill_arrays(pFrameYUV->data, pFrameYUV->linesize, outBuffer,
+		AV_PIX_FMT_YUV420P, pCodecCtx->width, pCodecCtx->height, 1);
+
+	pImgConvertCtx = sws_getContext(pCodecCtx->width, pCodecCtx->height,
+		pCodecCtx->pix_fmt, pCodecCtx->width, pCodecCtx->height,
+		AV_PIX_FMT_YUV420P, SWS_BICUBIC, NULL, NULL, NULL);
+
+
+	int frameIndex = 0;
+	while (frameIndex < filescount){
+		// 3.2 从输入流读取一个packet
+		filename = dirname + QString().sprintf("\\%06d.jpeg", frameIndex);
+		qDebug() << filename;
+		avformat_free_context(ifmtCtx);
+		ifmtCtx = NULL;
+		if (avformat_open_input(&ifmtCtx, filename.toStdString().c_str(), NULL, NULL) != 0) {
+			qDebug() << "Can't open input file.";
+			goto end;
+		}
+
+		ret = av_read_frame(ifmtCtx, &pkt);
+
+		if (ret < 0){
+			break;
+		}
+
+
+		ret = avcodec_send_packet(pCodecCtx, &pkt);
+		if (ret < 0){
+			printf("Decode error.\n");
+			goto end;
+		}
+
+		if (avcodec_receive_frame(pCodecCtx, pFrame) >= 0){
+			sws_scale(pImgConvertCtx,
+				(const unsigned char* const*)pFrame->data,
+				pFrame->linesize, 0, pCodecCtx->height, pFrameYUV->data,
+				pFrameYUV->linesize);
+
+			pFrameYUV->format = AV_PIX_FMT_YUV420P;
+			pFrameYUV->width = pCodecCtx->width;
+			pFrameYUV->height = pCodecCtx->height;
+
+
+			ret = avcodec_send_frame(videoCodecCtx, pFrameYUV);
+			if (ret < 0){
+				printf("failed to encode.\n");
+				goto end;
+			}
+
+			if (avcodec_receive_packet(videoCodecCtx, &pkt) >= 0){
+				// 设置输出DTS,PTS
+				pkt.pts = pkt.dts = frameIndex * (ofmtCtx->streams[0]->time_base.den) / ofmtCtx->streams[0]->time_base.num / 30;
+				frameIndex++;
+
+				ret = av_interleaved_write_frame(ofmtCtx, &pkt);
+				if (ret < 0){
+					printf("send packet failed: %d\n", ret);
+				}else{
+					printf("send %5d packet successfully!\n", frameIndex);
+				}
+			}
+		}
+		av_packet_unref(&pkt);
+	}
+
+end:
+	avformat_close_input(&ifmtCtx);
+
+	/* close output */
+	if (ofmtCtx && !(ofmtCtx->oformat->flags & AVFMT_NOFILE)) {
+		avio_closep(&ofmtCtx->pb);
+	}
+	avformat_free_context(ofmtCtx);
+
+	if (ret < 0 && ret != AVERROR_EOF) {
+		printf("Error occurred\n");
+		return -1;
+	}
+
+	return 0;
+}

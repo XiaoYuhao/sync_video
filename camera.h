@@ -28,3 +28,4 @@ extern "C"
 int listDevices(std::vector<std::string>& list);
 int camera1();
 int JPEGtoRGB(AVPacket* pkt, AVCodecContext* pCodecCtx, AVFrame* pFrame, QImage *image);
+int JPEGtoVideo(const QString& dirname);
