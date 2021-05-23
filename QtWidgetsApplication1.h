@@ -72,7 +72,11 @@ private:
 
     //zen::ZenClient *zenclient;
     //std::vector<ZenImuData> imudata;
+    std::vector<std::string> sensors_name;
     bool can_write_imudata;
+
+    QVector<QFile*> imu_files;
+    QVector<QTextStream*> imu_outstreams;
 
 
 signals:
@@ -100,7 +104,7 @@ private slots:
     int createVideo(const QString &dirname, const QString &outfile);
 
     int initImuSensor();
-    void readImuSensor(std::string& io_type, std::string& sensor_name, int index);
+    void readImuSensor(std::string& io_type, std::string& sensor_name, std::string& identifer, int index);
     void initSensorTable(std::vector<std::string>*);
     //void updateSensorTable(std::vector<ZenImuData>*);
     void updateSensorTable(ZenImuData, int);

@@ -82,11 +82,25 @@ void writeImuData2(QTextStream& out, const ZenImuData& imudata, int record) {
 	out << "   " << QString::number(imudata.rotOffsetM[3]).rightJustified(8, ' ') << "   " << QString::number(imudata.rotOffsetM[4]).rightJustified(8, ' ') << "   " << QString::number(imudata.rotOffsetM[5]).rightJustified(8, ' ') << endl;
 	out << "   " << QString::number(imudata.rotOffsetM[6]).rightJustified(8, ' ') << "   " << QString::number(imudata.rotOffsetM[7]).rightJustified(8, ' ') << "   " << QString::number(imudata.rotOffsetM[8]).rightJustified(8, ' ') << endl;
 	out << "Barometric pressure:     " << QString::number(imudata.pressure).rightJustified(8, ' ') << endl;
-	out << "Linear acceleration:     " << QString::number(imudata.linAcc[0]).rightJustified(8, ' ') << "   " << QString::number(imudata.linAcc[1]).rightJustified(8, ' ') << "   " << QString::number(imudata[i].linAcc[2]).rightJustified(8, ' ') << endl;
+	out << "Linear acceleration:     " << QString::number(imudata.linAcc[0]).rightJustified(8, ' ') << "   " << QString::number(imudata.linAcc[1]).rightJustified(8, ' ') << "   " << QString::number(imudata.linAcc[2]).rightJustified(8, ' ') << endl;
 	out << "Gyroscope temperature:   " << QString::number(imudata.gTemp).rightJustified(8, ' ') << endl;
 	out << "Altitude:                " << QString::number(imudata.altitude).rightJustified(8, ' ') << endl;
 	out << "Temperature:             " << QString::number(imudata.temperature).rightJustified(8, ' ') << endl;
 	out << "Heave Motion:            " << QString::number(imudata.heaveMotion).rightJustified(8, ' ') << endl;
 	out << "                ---------------- End ----------------" << endl;
 	out << endl;
+}
+
+void writeCsvHeader(QTextStream& out) {
+	out << "ImageIndex, TimeStamp (s), FrameNumber, AccX (g), AccY (g), AccZ (g), GyroX (deg/s), GyroY (deg/s), GyroZ (deg/s), \
+		MagX (uT), MagY (uT), MagZ (uT), EulerX (deg), EulerY (deg), EulerZ (deg), QuatW, QuatX, QuatY, QuatZ, \
+		LinAccX (g), LinAccY (g), LinAccZ (g), Pressure (kPa), Altitude (m), Temperature (degC), HeaveMotion (m)" << endl;
+}
+
+void writeCsvData(QTextStream& out, const ZenImuData& imudata, int record) {
+	out << record << ", " << imudata.timestamp << ", " << imudata.frameCount << ", " << imudata.a[0] << ", " << imudata.a[1] << ", " << imudata.a[2]
+		<< ", " << imudata.g[0] << ", " << imudata.g[1] << ", " << imudata.g[2] << ", " << imudata.b[0] << ", " << imudata.b[1] << ", " << imudata.b[2]
+		<< ", " << imudata.r[0] << ", " << imudata.r[1] << ", " << imudata.r[2] << ", " << imudata.q[0] << ", " << imudata.q[1] << ", " << imudata.q[2]
+		<< ", " << imudata.q[3] << ", " << imudata.linAcc[0] << ", " << imudata.linAcc[1] << ", " << imudata.linAcc[2] << ", " << imudata.pressure
+		<< ", " << imudata.altitude << ", " << imudata.gTemp << ", " << imudata.heaveMotion << endl;
 }

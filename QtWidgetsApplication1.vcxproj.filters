@@ -49,9 +49,6 @@
     <ClCompile Include="setupwindow.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="upload.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="utils.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -71,15 +68,9 @@
     <QtUic Include="setupwindow.ui">
       <Filter>Form Files</Filter>
     </QtUic>
-    <QtUic Include="upload.ui">
-      <Filter>Form Files</Filter>
-    </QtUic>
   </ItemGroup>
   <ItemGroup>
     <QtMoc Include="setupwindow.h">
-      <Filter>Header Files</Filter>
-    </QtMoc>
-    <QtMoc Include="upload.h">
       <Filter>Header Files</Filter>
     </QtMoc>
   </ItemGroup>

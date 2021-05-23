@@ -59,7 +59,7 @@
     <IncludePath>D:\Codes\QtWidgetsApplication1\ffmpeg\ffmpeg;D:\Codes\QtWidgetsApplication1\ffmpeg;D:\Codes\QtWidgetsApplication1\opencv;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|x64'">
-    <LibraryPath>D:\Codes\QtWidgetsApplication1\quazip;D:\Codes\QtWidgetsApplication1\openzen;D:\Codes\QtWidgetsApplication1\opencv;D:\Codes\QtWidgetsApplication1\kinect;$(LibraryPath)</LibraryPath>
+    <LibraryPath>D:\Codes\QtWidgetsApplication1\ffmpeg\ffmpeg;D:\Codes\QtWidgetsApplication1\ffmpeg;D:\Codes\QtWidgetsApplication1\quazip;D:\Codes\QtWidgetsApplication1\openzen;D:\Codes\QtWidgetsApplication1\opencv;D:\Codes\QtWidgetsApplication1\kinect;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <Link>
@@ -76,11 +76,11 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <Link>
-      <AdditionalLibraryDirectories>D:\Codes\QtWidgetsApplication1\quazip;D:\Codes\QtWidgetsApplication1\openzen;D:\Codes\QtWidgetsApplication1\opencv;D:\Codes\QtWidgetsApplication1\kinect;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>k4a.lib;k4arecord.lib;opencv_world3414.lib;opencv_world3414d.lib;OpenZen.lib;quazip.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>D:\Codes\QtWidgetsApplication1\ffmpeg;D:\Codes\QtWidgetsApplication1\quazip;D:\Codes\QtWidgetsApplication1\openzen;D:\Codes\QtWidgetsApplication1\opencv;D:\Codes\QtWidgetsApplication1\kinect;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>avcodec.lib;avdevice.lib;avfilter.lib;avformat.lib;avutil.lib;postproc.lib;swresample.lib;swscale.lib;k4a.lib;k4arecord.lib;opencv_world3414.lib;opencv_world3414d.lib;OpenZen.lib;quazip.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <ClCompile>
-      <AdditionalIncludeDirectories>D:\Codes\QtWidgetsApplication1\quazip;D:\Codes\QtWidgetsApplication1\openzen;D:\Codes\QtWidgetsApplication1\opencv;D:\Codes\QtWidgetsApplication1\kinect;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>D:\Codes\QtWidgetsApplication1\ffmpeg\ffmpeg;D:\Codes\QtWidgetsApplication1\ffmpeg;D:\Codes\QtWidgetsApplication1\quazip;D:\Codes\QtWidgetsApplication1\openzen;D:\Codes\QtWidgetsApplication1\opencv;D:\Codes\QtWidgetsApplication1\kinect;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <PostBuildEvent>
       <Command>editbin /SUBSYSTEM:CONSOLE $(OutDir)\$(ProjectName).exe</Command>
@@ -114,7 +114,6 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="setupwindow.cpp" />
-    <ClCompile Include="upload.cpp" />
     <ClCompile Include="utils.cpp" />
     <QtRcc Include="QtWidgetsApplication1.qrc" />
     <QtUic Include="QtWidgetsApplication1.ui" />
@@ -124,13 +123,11 @@
     <ClCompile Include="QtWidgetsApplication1.cpp" />
     <ClCompile Include="main.cpp" />
     <QtUic Include="setupwindow.ui" />
-    <QtUic Include="upload.ui" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="camera.h" />
     <ClInclude Include="imu.h" />
     <ClInclude Include="utils.h" />
-    <QtMoc Include="upload.h" />
     <QtMoc Include="setupwindow.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
