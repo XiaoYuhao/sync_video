@@ -16,6 +16,10 @@ setupwindow::~setupwindow()
 
 }
 
+void setupwindow::show_current_dir() {
+	ui.directoryComboBox->addItem(settings->value("save_dir").toString());
+	ui.directoryComboBox->setCurrentIndex(0);
+}
 
 void setupwindow::on_toolbotton_clicked() {
 	QString directory = QDir::toNativeSeparators(QFileDialog::getExistingDirectory(this, tr("Save Path"), QDir::currentPath()));

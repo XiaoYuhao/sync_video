@@ -13,6 +13,7 @@ public:
 	setupwindow(QWidget *parent = Q_NULLPTR);
 	~setupwindow();
 	void set_setttings(QSettings* _set);
+	void show_current_dir();
 
 private:
 	Ui::setupwindow ui;

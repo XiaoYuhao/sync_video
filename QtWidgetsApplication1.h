@@ -85,12 +85,14 @@ signals:
     //void ready_to_updateimu(std::vector<ZenImuData>*);
     void ready_to_updateimu(ZenImuData, int);
     void ready_to_appendlog(QString);
+    void start_record_signal();
+    void stop_record_signal();
  
 private slots:
     void start_botton_clicked();
     void stop_botton_clicked();
     void close_botton_clicked();
-    void tool_botton_clicked();
+    //void tool_botton_clicked();
     
     void updateTime();
     void openSetupWindow();
@@ -103,10 +105,11 @@ private slots:
 
     int createVideo(const QString &dirname, const QString &outfile);
 
-    int initImuSensor();
-    void readImuSensor(std::string& io_type, std::string& sensor_name, std::string& identifer, int index);
-    void initSensorTable(std::vector<std::string>*);
+    //int initImuSensor();
+    //void readImuSensor(std::string& io_type, std::string& sensor_name, std::string& identifer, int index);
+    //void initSensorTable(std::vector<std::string>*);
     //void updateSensorTable(std::vector<ZenImuData>*);
-    void updateSensorTable(ZenImuData, int);
+    //void updateSensorTable(ZenImuData, int);
     void appendLog(QString);
+    void listenPipe();
 };

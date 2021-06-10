@@ -6,6 +6,8 @@
 #include <QMessageBox>
 #include <QFileDialog>
 #include <cstdio>
+#include <windows.h>
+
 
 using namespace zen;
 
@@ -16,6 +18,7 @@ QtWidgetsApplication1::QtWidgetsApplication1(QWidget *parent)
     ui.setupUi(this);
     settings = new QSettings("config.ini", QSettings::IniFormat);
     setupwin.set_setttings(settings);
+    setWindowTitle("DataCollector");
 
     qRegisterMetaType<std::vector<std::string>*>();
     //qRegisterMetaType<std::vector<ZenImuData>*>();
@@ -27,7 +30,7 @@ QtWidgetsApplication1::QtWidgetsApplication1(QWidget *parent)
 
     ui.progressBar->setVisible(false);
     ui.progressLabel->setVisible(false);
-    ui.sensortable->setVisible(false);
+    //ui.sensortable->setVisible(false);
 
     show_timer = new QTimer(this);
     write_timer = new QTimer(this);
@@ -42,15 +45,20 @@ QtWidgetsApplication1::QtWidgetsApplication1(QWidget *parent)
     connect(this, SIGNAL(ready_to_updateimu(ZenImuData, int)), this, SLOT(updateSensorTable(ZenImuData, int)));
     connect(this, SIGNAL(ready_to_appendlog(QString)), this, SLOT(appendLog(QString)));
 
+    connect(this, SIGNAL(start_record_signal()), this, SLOT(start_botton_clicked()));
+    connect(this, SIGNAL(stop_record_signal()), this, SLOT(stop_botton_clicked()));
+
     pFrame = av_frame_alloc();
 
-    save_path = "";
+    save_path = settings->value("save_dir").toString();
+    if(save_path == "") emit ready_to_appendlog(QString().fromLocal8Bit("警告：没有选择保存的目录，请前往左上方设置中选择保存数据的目录."));
     stop_camera = false;
     stop_record = true;
 
     QtConcurrent::run(this, &QtWidgetsApplication1::readCamera);
     QtConcurrent::run(this, &QtWidgetsApplication1::readKinect);
-    QtConcurrent::run(this, &QtWidgetsApplication1::initImuSensor);
+    QtConcurrent::run(this, &QtWidgetsApplication1::listenPipe);
+    //QtConcurrent::run(this, &QtWidgetsApplication1::initImuSensor);
     //camera1();
     //imu_test();
 
@@ -106,55 +114,6 @@ void QtWidgetsApplication1::importFrame() {
         camera2_show_ready = false;
     }
 }
-/*
-void QtWidgetsApplication1::writeFrame() {
-    if (camera1_show_ready && camera2_show_ready) {
-        //QTime qtime;
-        //qtime.start();
-        if (!stop_record) {
-            QString filename1 = dirname1 + "\\" + QString().sprintf("%06d.jpeg", record_count);
-            QFile file1(filename1);
-            file1.open(QIODevice::WriteOnly);
-            file1.write((char*)show_pkt.data, show_pkt.size);
-            file1.close();
-
-            QString filename2 = dirname2 + "\\" + QString().sprintf("%06d.jpeg", record_count);
-            QFile file2(filename2);
-            file2.open(QIODevice::WriteOnly);
-            file2.write((char*)k4a_image_get_buffer(show_color), k4a_image_get_size(show_color));
-            file2.close();
-
-            QString filename3 = dirname3 + "\\" + QString().sprintf("%06d.dep", record_count);
-            QFile file3(filename3);
-            file3.open(QIODevice::WriteOnly);
-            file3.write((char*)k4a_image_get_buffer(show_depth), k4a_image_get_size(show_depth));
-            file3.close();
-
-            record_count++;
-        }
-        
-        if (!can_show) {
-            av_new_packet(&camera1_show_pkt, show_pkt.size);
-            memcpy(camera1_show_pkt.data, show_pkt.data, show_pkt.size);
-            camera1_show_pkt.size = show_pkt.size;
-
-            av_new_packet(&camera2_show_pkt, k4a_image_get_size(show_color));
-            memcpy(camera2_show_pkt.data, k4a_image_get_buffer(show_color), k4a_image_get_size(show_color));
-            camera2_show_pkt.size = k4a_image_get_size(show_color);
-
-            can_show = true;
-        }
-        
-
-        av_packet_unref(&show_pkt);
-        k4a_image_release(show_color);
-        k4a_image_release(show_depth);
-        camera1_show_ready = false;
-        camera2_show_ready = false;
-
-        qDebug() << QTime::currentTime().toString();
-    }
-}*/
 
 void QtWidgetsApplication1::start_botton_clicked() {
     if (!stop_record) return;
@@ -193,6 +152,7 @@ void QtWidgetsApplication1::start_botton_clicked() {
     clearFiles(dirname3);
     //clearFiles(dirname4);
 
+    /*
     imu_files.clear();
     imu_outstreams.clear();
     for (int i = 0; i < sensors_name.size(); i++) {
@@ -202,7 +162,7 @@ void QtWidgetsApplication1::start_botton_clicked() {
         writeCsvHeader(*out);
         imu_files.push_back(file);
         imu_outstreams.push_back(out);
-    }
+    }*/
     
     stop_record = false;
     can_write_imudata = false;
@@ -253,12 +213,104 @@ void QtWidgetsApplication1::close_botton_clicked() {
     time_timer->stop();
 }
 
+/*
 void QtWidgetsApplication1::tool_botton_clicked() {
     save_path = QDir::toNativeSeparators(QFileDialog::getExistingDirectory(this, tr("Save Path"), QDir::currentPath()));
     ui.dirlabel->setText(save_path);
+}*/
+
+void QtWidgetsApplication1::listenPipe() {
+    while (true) {
+        HANDLE hpipe = NULL;
+        hpipe = CreateNamedPipe(L"\\\\.\\pipe\\signalpipe", PIPE_ACCESS_DUPLEX, PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT, PIPE_UNLIMITED_INSTANCES, 4096, 4096, 0, NULL);
+        if (hpipe == INVALID_HANDLE_VALUE) {
+            std::cout << "Open pipe error" << std::endl;
+            emit ready_to_appendlog(QString().fromLocal8Bit("错误：与主程序建立通信失败."));
+            return;
+        }
+        if (!ConnectNamedPipe(hpipe, NULL)) {
+            std::cout << "Connect Failed." << std::endl;
+            emit ready_to_appendlog(QString().fromLocal8Bit("错误：与主程序建立通信失败."));
+            break;
+        }
+        char szBuffer[1024] = { 0 };
+        DWORD dwReturn = 0;
+
+        while (true) {
+            if (ReadFile(hpipe, szBuffer, 1024, &dwReturn, NULL)) {
+                std::cout << szBuffer << std::endl;
+                //std::string str(szBuffer);
+                if (szBuffer[0] == '0') {
+                    emit ready_to_appendlog(QString().fromLocal8Bit("提示：结束录制视频..."));
+                    emit stop_record_signal();
+                }
+                else if (szBuffer[0] == '1') {
+                    QString fname = QString::fromUtf8(szBuffer + 2);
+                    save_path = settings->value("save_dir").toString();
+                    if (save_path == "") {
+                        emit ready_to_appendlog(QString().fromLocal8Bit("警告：没有选择保存的目录，数据将被暂时存放D:\\temp目录下"));
+                        save_path = "D:\\temp";
+                    }
+                    save_path += "\\" + fname;\
+                    emit ready_to_appendlog(QString().fromLocal8Bit("提示：开始录制视频..."));
+                    emit ready_to_appendlog(QString().fromLocal8Bit("提示：数据保存在目录") + save_path);
+                    emit start_record_signal();
+
+                }
+                
+            }
+            else {
+                std::cout << "Read Failed." << std::endl;
+                break;
+            }
+        }
+    }
+    /*
+    HANDLE hpipe = NULL;
+    char szBuffer[1024] = { 0 };
+    DWORD dwReturn = 0;
+    while (!WaitNamedPipe(L"\\\\.\\pipe\\videocollector", NMPWAIT_USE_DEFAULT_WAIT)) {
+        qDebug() << "No read pipe accessible." << endl;
+        emit ready_to_appendlog(QString().fromLocal8Bit("错误：未找到主程序，请检查主程序是否启动."));
+        QThread::sleep(1);
+    }
+    hpipe = CreateFile(L"\\\\.\\pipe\\videocollector", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
+    if (hpipe == INVALID_HANDLE_VALUE) {
+        qDebug() << "Open read pipe error." << endl;
+        emit ready_to_appendlog(QString().fromLocal8Bit("错误：打开消息管道失败，请尝试重启程序."));
+        return;
+    }
+    ui.StartButton->setDisabled(true);
+    ui.StopButton->setDisabled(true);
+    while (true) {
+        if (ReadFile(hpipe, szBuffer, 1024, &dwReturn, NULL)) {
+            //szBuffer[dwReturn] = '\0';
+            if (szBuffer[0] == '0') {
+                qDebug() << "Recv a stop signal from server" << endl;
+                emit ready_to_appendlog(QString().fromLocal8Bit("提示：结束录制视频..."));
+                //emit stop_record_signal();
+            }
+            else if (szBuffer[0] == '1') {
+                qDebug() << "Recv a start signal from server" << endl;
+                emit ready_to_appendlog(QString().fromLocal8Bit("提示：开始录制视频..."));
+                std::string name = szBuffer + 3;
+                save_path = settings->value("save_dir").toString();
+                if(save_path == ""){
+                    emit ready_to_appendlog(QString().fromLocal8Bit("警告：没有选择保存的目录，数据将被暂时存放D:\\temp\\目录下"));
+                    save_path = "D:\\temp\\";
+                }
+                save_path += QString::fromStdString(name);
+                //emit start_record_signal();
+            }
+        }
+        else {
+            qDebug() << "Read pipe error." << endl;
+            emit ready_to_appendlog(QString().fromLocal8Bit("错误：读取管道消息出错."));
+            break;
+        }
+    }
+    */
 }
-
-
 
 void QtWidgetsApplication1::readCamera() {
     AVFormatContext* pFormatCtx = NULL;
@@ -385,6 +437,7 @@ void QtWidgetsApplication1::updateTime() {
 }
 
 void QtWidgetsApplication1::openSetupWindow() {
+    setupwin.show_current_dir();
     setupwin.show();
 
 }
@@ -520,6 +573,7 @@ void QtWidgetsApplication1::readKinect() {
     k4a_device_close(device);
     return;
 }
+
 
 
 int QtWidgetsApplication1::createVideo(const QString &dirname, const QString &outfile) {
@@ -788,6 +842,7 @@ end:
     return 0;
 }
 
+/*
 int QtWidgetsApplication1::initImuSensor() {
     ZenSetLogLevel(ZenLogLevel_Debug);
 
@@ -844,104 +899,12 @@ int QtWidgetsApplication1::initImuSensor() {
                     QThread::msleep(100);
                     for (int i = 0; i < sensors_idx.size(); i++) {
                         QtConcurrent::run(this, &QtWidgetsApplication1::readImuSensor, std::string(g_discoveredSensors[sensors_idx[i]].ioType), std::string(g_discoveredSensors[i].name), std::string(g_discoveredSensors[i].identifier), i);
-                    /*    int reconnect = 0;
-                    repeat:
-                        auto sensorPair = zenclient.obtainSensor(g_discoveredSensors[sensors_idx[i]]);
-                        auto obtainError = sensorPair.first;
-                        auto& sensor = sensorPair.second;
-                        if (obtainError && reconnect++ < 3) {
-                            goto repeat;
-                        }
-                        if (obtainError) {
-                            qDebug() << "Connect Senesor Failed.";
-                            emit ready_to_appendlog(QString().fromLocal8Bit("错误：连接IMU传感器失败，请检查设备是否正常运行后重新启动程序."));
-                            zenclient.close();
-                            return -1;
-                        }
-                        auto imuPair = sensor.getAnyComponentOfType(g_zenSensorType_Imu);
-                        auto& hasImu = imuPair.first;
-                        auto imu = imuPair.second;
-                        if (!hasImu) {
-                            zenclient.close();
-                            return -1;
-                        }
-                        sensors.emplace_back(std::move(sensor));
-                        imu_handles.emplace_back(imu);
-                        count.push_back(0);
-                        auto res = imu.getInt32Property(ZenImuProperty_SamplingRate);
-                        if (res.first) {
-                            zenclient.close();
-                            return -1;
-                        }
-                        qDebug() << "Sampling Rate :" << res.second;
-                        if (auto error = imu.setBoolProperty(ZenImuProperty_StreamData, true)) {
-                            zenclient.close();
-                            return -1;
-                        }
-                        /*if (auto error = imu.setInt32Property(ZenImuProperty_SamplingRate, 50)) {
-                            zenclient.close();
-                            return -1;
-                        }*/
-                        
                         imu_number++;
                     }
-                    /*
-                    for (auto& imu : imu_handles) {
-                        imu.executeProperty(ZenImuProperty_StartSensorSync);
-                    }
-                    QThread::msleep(3000);
-                    for (auto& imu : imu_handles) {
-                        imu.executeProperty(ZenImuProperty_StopSensorSync);
-                    }  
-                    imudata.resize(imu_number);
-                    emit ready_to_initimu(&sensors_name);
-                    */
                     break;
                 }
             }
         }
-        /*else if (event.eventType == ZenEventType_ImuData) {
-                    int idx = -1;
-                    for (unsigned i = 0; i < sensors.size(); i++) {
-                        if (event.sensor == sensors[i].sensor()) {
-                            idx = i;
-                            break;
-                        }
-                    }
-                    if (idx == -1) break;
-                    imudata[idx] = event.data.imuData;
-                    count[idx]++;
-                    bool flag = true;
-                    for (int i = 0; i < imu_number; i++) {
-                        if (count[i] == 0) {
-                            flag = false;
-                            break;
-                        }
-                    }
-                    if (flag) {
-                        for (int i = 0; i < imu_number; i++) {
-                            count[i] = 0;
-                        }
-                        if (can_write_imudata) {
-                            QString filename4 = dirname4 + "\\" + QString().sprintf("%06d.txt", record2_count);
-                            writeImuData(filename4, imudata, sensors_name);
-                            can_write_imudata = false;
-                        }
-                        emit ready_to_updateimu(&imudata);
-                    }
-                    count2++;
-        }
-        else if (event.eventType == ZenEventType_SensorDisconnected) {
-            int idx = -1;
-            for (unsigned i = 0; i < sensors.size(); i++) {
-                if (event.sensor == sensors[i].sensor()) {
-                    idx = i;
-                    break;
-                }
-            }
-            if (idx == -1) break;
-            emit ready_to_appendlog(QString().fromLocal8Bit("警告：IMU传感器失去连接..."));
-        }*/
     }
 
 end:
@@ -959,11 +922,6 @@ void QtWidgetsApplication1::readImuSensor(std::string& io_type, std::string& sen
     if (clientError) {
         return;
     }
-    
-    /*if (auto error = zenclient.listSensorsAsync()) {
-        zenclient.close();
-        return;
-    }*/
     int reconnect = 0;
     std::cout << io_type << " - " << sensor_name << std::endl;
 
@@ -975,8 +933,11 @@ repeat:
         goto repeat;
     }
     if (obtainError) {
+        qDebug() << "Init Sensor " << index << " Failed.";
+        std::string str = "错误：初始化传感器" + sensor_name + "失败.";
+        ui.logBrowser->append(QString().fromLocal8Bit(str.c_str()));
         zenclient.close();
-        return;
+        return; 
     }
     auto imuPair = sensor.getAnyComponentOfType(g_zenSensorType_Imu);
     auto& hasImu = imuPair.first;
@@ -999,68 +960,19 @@ repeat:
     
     int last_record = -1;
     int count = 0;
-    /*QFile file(save_path + "\\" + QString().fromStdString(sensor_name) + ".csv");
-    file.open(QIODevice::WriteOnly);
-    QTextStream out(&file);*/
-    //writeCsvHeader(*imu_outstreams[index]);
-    //out.setRealNumberNotation(QTextStream::FixedNotation);
-    //out.setRealNumberPrecision(3);
     ZenEventData_SensorFound sensorfound;
     while (!stop_camera) {
         const auto pair = zenclient.waitForNextEvent();
         const bool success = pair.first;
         auto& event = pair.second;
-        //qDebug() << "Event " << index;
         if (!success) {
             break;
         }
-        /*if (!event.component.handle) {
-            if (event.eventType == ZenEventType_SensorFound) {
-                //if(event.data.sensorFound. )
-                //g_discoveredSensors.push_back(event.data.sensorFound);
-            }
-            else if (event.eventType == ZenEventType_SensorListingProgress) {
-                if (event.data.sensorListingProgress.progress == 1.0f) {
-                repeat:
-                    auto sensorPair = zenclient.obtainSensorByName(io_type, sensor_name, 921600);
-                    auto obtainError = sensorPair.first;
-                    auto& sensor = sensorPair.second;
-                    if (obtainError && reconnect++ < 3) {
-                        goto repeat;
-                    }
-                    if (obtainError) {
-                        zenclient.close();
-                        return;
-                    }
-                    auto imuPair = sensor.getAnyComponentOfType(g_zenSensorType_Imu);
-                    auto& hasImu = imuPair.first;
-                    auto imu = imuPair.second;
-                    if (!hasImu) {
-                        zenclient.close();
-                        return;
-                    }
-                    if (auto error = imu.setBoolProperty(ZenImuProperty_StreamData, true)) {
-                        zenclient.close();
-                        return;
-                    }
-                    qDebug() << "Init Sensor " << index << " Successfully.";
-                }
-            }
-        }*/
         if (event.eventType == ZenEventType_ImuData) {
             if (!stop_record) {
-                //last_record = record2_count;
-                //writeImuData2(out, event.data.imuData, last_record);
                 writeCsvData(*imu_outstreams[index], event.data.imuData, record2_count);
-                //todo
-                //emit ready_to_updateimu(event.data.imuData, index);
             }
             emit ready_to_updateimu(event.data.imuData, index);
-            /*if (count++ % 10 == 0) {
-                emit ready_to_updateimu(event.data.imuData, index);
-                //qDebug() << last_record;
-                //qDebug() << "Sensor " << index << " : " << event.data.imuData.a[0] << " - " << event.data.imuData.a[1] << " - " << event.data.imuData.a[2];
-            }*/
         }
     }
 }
@@ -1080,8 +992,8 @@ void QtWidgetsApplication1::initSensorTable(std::vector<std::string> *sensors_na
     ui.sensortable->setEditTriggers(QAbstractItemView::NoEditTriggers);
     ui.sensortable->setStyleSheet("background-color:rgba(0,0,0,0)");
     ui.sensortable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
-    ui.sensortable->setColumnWidth(0, 100);
-    //ui.sensortable->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    //ui.sensortable->setColumnWidth(0, 100);
+    ui.sensortable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
     ui.sensortable->setVisible(true);
 
     ui.sensortable->setSpan(0, 0, 2, 1);
@@ -1118,29 +1030,14 @@ void QtWidgetsApplication1::initSensorTable(std::vector<std::string> *sensors_na
     //ui.logBrowser->append(QString().fromLocal8Bit("提示：初始化IMU传感器成功."));
 }
 
-/*
-void QtWidgetsApplication1::updateSensorTable(std::vector<ZenImuData> *imudata) {
-    //qDebug() << "Start Update.";
-    if (stop_camera) return;
-    for (int i = 0; i < (*imudata).size(); i++) {
-        for (int j = 0; j < 3; j++) {
-            ui.sensortable->item(i + 2, j + 1)->setText(QString().sprintf("%.3f", (*imudata)[i].a[j]));
-            ui.sensortable->item(i + 2, j + 4)->setText(QString().sprintf("%.3f", (*imudata)[i].g[j]));
-        }
-    }
-    //qDebug() << "Update Successful.";
-}
-*/
 void QtWidgetsApplication1::updateSensorTable(ZenImuData imudata, int col) {
-    //qDebug() << "Start Update.";
     if (stop_camera) return;
-    //qDebug() << "Sensor " << col << " : " << imudata.a[0] << " - " << imudata.a[1] << " - " << imudata.a[2];
     for (int j = 0; j < 3; j++) {
         ui.sensortable->item(col + 2, j + 1)->setText(QString().sprintf("%.3f", imudata.a[j]));
         ui.sensortable->item(col + 2, j + 4)->setText(QString().sprintf("%.3f", imudata.g[j]));
     }
-    //qDebug() << "Update Successful.";
 }
+*/
 
 void QtWidgetsApplication1::appendLog(QString text) {
     ui.logBrowser->append(text);
