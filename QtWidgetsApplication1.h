@@ -78,6 +78,8 @@ private:
     QVector<QFile*> imu_files;
     QVector<QTextStream*> imu_outstreams;
 
+    FILE* fp;
+
 
 signals:
     void ready_to_show();

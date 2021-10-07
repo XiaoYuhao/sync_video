@@ -169,13 +169,24 @@ void QtWidgetsApplication1::start_botton_clicked() {
     record1_count = 0;
     record2_count = 0;
 
+    //QString cmd = "ffmpeg -f dshow -i audio=\"Microphone Array (Azure Kinect Microphone Array)\" " + save_path + "\\audio.mp3";
+    QString cmd = QString().fromLocal8Bit("ffmpeg -f dshow -i audio=\"麦克风阵列 (Azure Kinect Microphone Array)\" ") + save_path + "\\audio.mp3";
+    qDebug() << cmd << endl;
+    //cmd.toLocal8Bit().data();
+    if ((fp = _popen(cmd.toLocal8Bit().data(), "w")) == NULL) {
+        qDebug() << "Open ffmpeg recored audio pipe failed." << endl;
+        emit ready_to_appendlog(QString().fromLocal8Bit("错误：录制音频失败."));
+    }
+
     start_time = QTime::currentTime();
     
 }
 
 void QtWidgetsApplication1::stop_botton_clicked() {
     stop_record = true;
-
+    fwrite("q", sizeof(char), 1, fp);
+    _pclose(fp);
+    /*
     for (auto& file : imu_files) {
         file->close();
         delete file;
@@ -184,8 +195,9 @@ void QtWidgetsApplication1::stop_botton_clicked() {
         delete stream;
     }
     imu_files.clear();
-    imu_outstreams.clear();
+    imu_outstreams.clear();*/
 
+    /*
     QPixmap pixmap;
     pixmap.load("resource\\tongji.jpeg");
     ui.camera1->setPixmap(pixmap);
@@ -204,6 +216,7 @@ void QtWidgetsApplication1::stop_botton_clicked() {
     QThread::msleep(1000);
     ui.progressBar->setVisible(false);
     ui.progressLabel->setVisible(false);
+    */
 }
 
 void QtWidgetsApplication1::close_botton_clicked() {
@@ -510,6 +523,23 @@ void QtWidgetsApplication1::readKinect() {
     k4a_capture_t capture = NULL;
     emit ready_to_appendlog(QString().fromLocal8Bit("提示：Kinect初始化成功."));
 
+    // 保存校准值
+    size_t data_size = 0;
+    k4a_device_get_raw_calibration(device, NULL, &data_size);
+    data_size += 10;
+    uint8_t* calibration_data = new uint8_t[data_size];
+    if (K4A_BUFFER_RESULT_SUCCEEDED == k4a_device_get_raw_calibration(device, calibration_data, &data_size)) {
+        QString calibration_file_name = save_path + "\\kinect_calibration";
+        QFile calibration_file(calibration_file_name);
+        calibration_file.open(QIODevice::WriteOnly);
+        calibration_file.write((char*)calibration_data, data_size);
+        calibration_file.close();
+        emit ready_to_appendlog(QString().fromLocal8Bit("提示：Kinect相机校准值提取成功."));
+    }
+    else {
+        emit ready_to_appendlog(QString().fromLocal8Bit("警告：Kinect相机校准值提取失败."));
+    }
+          
     while (!stop_camera) {
         switch (k4a_device_get_capture(device, &capture, 1000)) {
         case K4A_WAIT_RESULT_SUCCEEDED:
