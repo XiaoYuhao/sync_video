@@ -36,7 +36,7 @@
     <QtBuildConfig>debug</QtBuildConfig>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|x64'" Label="QtSettings">
-    <QtInstall>5.12.10_msvc2017_64</QtInstall>
+    <QtInstall>5.14.2_msvc2017_64</QtInstall>
     <QtModules>core;gui;network;widgets</QtModules>
     <QtBuildConfig>release</QtBuildConfig>
   </PropertyGroup>
@@ -79,12 +79,13 @@
       <AdditionalLibraryDirectories>D:\Codes\QtWidgetsApplication1\ffmpeg;D:\Codes\QtWidgetsApplication1\quazip;D:\Codes\QtWidgetsApplication1\openzen;D:\Codes\QtWidgetsApplication1\opencv;D:\Codes\QtWidgetsApplication1\kinect;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>avcodec.lib;avdevice.lib;avfilter.lib;avformat.lib;avutil.lib;postproc.lib;swresample.lib;swscale.lib;k4a.lib;k4arecord.lib;opencv_world3414.lib;opencv_world3414d.lib;OpenZen.lib;quazip.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
-    <ClCompile>
-      <AdditionalIncludeDirectories>D:\Codes\QtWidgetsApplication1\ffmpeg\ffmpeg;D:\Codes\QtWidgetsApplication1\ffmpeg;D:\Codes\QtWidgetsApplication1\quazip;D:\Codes\QtWidgetsApplication1\openzen;D:\Codes\QtWidgetsApplication1\opencv;D:\Codes\QtWidgetsApplication1\kinect;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-    </ClCompile>
+    <ClCompile />
     <PostBuildEvent>
       <Command>editbin /SUBSYSTEM:CONSOLE $(OutDir)\$(ProjectName).exe</Command>
     </PostBuildEvent>
+    <ClCompile>
+      <AdditionalIncludeDirectories>D:\Codes\QtWidgetsApplication1\ffmpeg\ffmpeg;D:\Codes\QtWidgetsApplication1\ffmpeg;D:\Codes\QtWidgetsApplication1\openzen;D:\Codes\QtWidgetsApplication1\quazip;D:\Codes\QtWidgetsApplication1\opencv;D:\Codes\QtWidgetsApplication1\kinect;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x64'" Label="Configuration">
     <ClCompile>

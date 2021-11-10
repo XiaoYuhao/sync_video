@@ -12,7 +12,7 @@
 using namespace zen;
 
 
-QtWidgetsApplication1::QtWidgetsApplication1(QWidget *parent)
+QtWidgetsApplication1::QtWidgetsApplication1(QWidget* parent)
     : QMainWindow(parent)
 {
     ui.setupUi(this);
@@ -51,7 +51,7 @@ QtWidgetsApplication1::QtWidgetsApplication1(QWidget *parent)
     pFrame = av_frame_alloc();
 
     save_path = settings->value("save_dir").toString();
-    if(save_path == "") emit ready_to_appendlog(QString().fromLocal8Bit("警告：没有选择保存的目录，请前往左上方设置中选择保存数据的目录."));
+    if (save_path == "") emit ready_to_appendlog(QString().fromLocal8Bit("警告：没有选择保存的目录，请前往左上方设置中选择保存数据的目录."));
     stop_camera = false;
     stop_record = true;
 
@@ -163,29 +163,39 @@ void QtWidgetsApplication1::start_botton_clicked() {
         imu_files.push_back(file);
         imu_outstreams.push_back(out);
     }*/
-    
+
     stop_record = false;
     can_write_imudata = false;
+    record_calibration = false;
     record1_count = 0;
     record2_count = 0;
 
-    //QString cmd = "ffmpeg -f dshow -i audio=\"Microphone Array (Azure Kinect Microphone Array)\" " + save_path + "\\audio.mp3";
-    QString cmd = QString().fromLocal8Bit("ffmpeg -f dshow -i audio=\"麦克风阵列 (Azure Kinect Microphone Array)\" ") + save_path + "\\audio.mp3";
-    qDebug() << cmd << endl;
+    //QString cmd1 = "ffmpeg -f dshow -i audio=\"Microphone Array (Azure Kinect Microphone Array)\" " + save_path + "\\audio.mp3";
+    //QString cmd2 = QString().fromLocal8Bit("ffmpeg -f dshow -i audio=\"麦克风阵列 (Azure Kinect Microphone Array)\" ") + save_path + "\\audio.mp3";
+    QString cmd3 = QString().fromLocal8Bit("ffmpeg -f dshow -i audio=\"麦克风阵列 (2- Azure Kinect Microphone Array)\" ") + save_path + "\\audio.mp3";
+    qDebug() << cmd3 << endl;
     //cmd.toLocal8Bit().data();
-    if ((fp = _popen(cmd.toLocal8Bit().data(), "w")) == NULL) {
+    if ((fp3 = _popen(cmd3.toLocal8Bit().data(), "w")) == NULL) {
         qDebug() << "Open ffmpeg recored audio pipe failed." << endl;
         emit ready_to_appendlog(QString().fromLocal8Bit("错误：录制音频失败."));
     }
+    //if (((fp1 = _popen(cmd1.toLocal8Bit().data(), "w")) == NULL)&&((fp2 = _popen(cmd2.toLocal8Bit().data(), "w")) == NULL)&& ((fp3 = _popen(cmd3.toLocal8Bit().data(), "w")) == NULL)) {
+    //    qDebug() << "Open ffmpeg recored audio pipe failed." << endl;
+    //    emit ready_to_appendlog(QString().fromLocal8Bit("错误：录制音频失败."));
+    //}
 
     start_time = QTime::currentTime();
-    
+
 }
 
 void QtWidgetsApplication1::stop_botton_clicked() {
     stop_record = true;
-    fwrite("q", sizeof(char), 1, fp);
-    _pclose(fp);
+    //fwrite("q", sizeof(char), 1, fp1);
+    //fwrite("q", sizeof(char), 1, fp2);
+    fwrite("q", sizeof(char), 1, fp3);
+    //_pclose(fp1);
+    //_pclose(fp2);
+    _pclose(fp3);
     /*
     for (auto& file : imu_files) {
         file->close();
@@ -264,13 +274,13 @@ void QtWidgetsApplication1::listenPipe() {
                         emit ready_to_appendlog(QString().fromLocal8Bit("警告：没有选择保存的目录，数据将被暂时存放D:\\temp目录下"));
                         save_path = "D:\\temp";
                     }
-                    save_path += "\\" + fname;\
-                    emit ready_to_appendlog(QString().fromLocal8Bit("提示：开始录制视频..."));
+                    save_path += "\\" + fname; \
+                        emit ready_to_appendlog(QString().fromLocal8Bit("提示：开始录制视频..."));
                     emit ready_to_appendlog(QString().fromLocal8Bit("提示：数据保存在目录") + save_path);
                     emit start_record_signal();
 
                 }
-                
+
             }
             else {
                 std::cout << "Read Failed." << std::endl;
@@ -487,7 +497,7 @@ void QtWidgetsApplication1::readKinect() {
     {
         qDebug() << "kinect can't find codec";
         emit ready_to_appendlog(QString().fromLocal8Bit("错误：Kinect无法找到解码器."));
-        return ;
+        return;
     }
 
     camera2_pCodecCtx = avcodec_alloc_context3(camera2_pCodec);
@@ -495,7 +505,7 @@ void QtWidgetsApplication1::readKinect() {
     {
         qDebug() << "kinect can't alloc codec context";
         emit ready_to_appendlog(QString().fromLocal8Bit("错误：Kinect无法为解码器分配空间."));
-        return ;
+        return;
     }
 
     camera2_pCodecCtx->codec_id = AV_CODEC_ID_MJPEG;
@@ -511,11 +521,11 @@ void QtWidgetsApplication1::readKinect() {
     {
         qDebug() << "kinect can't open codec";
         emit ready_to_appendlog(QString().fromLocal8Bit("错误：Kinect无法打开解码器."));
-        return ;
+        return;
     }
 
     if (K4A_FAILED(k4a_device_start_cameras(device, &config))) {
-        qDebug()<<"Failed to start cameras!"<<endl;
+        qDebug() << "Failed to start cameras!" << endl;
         emit ready_to_appendlog(QString().fromLocal8Bit("错误：Kinect打开相机失败."));
         k4a_device_close(device);
         return;
@@ -523,7 +533,7 @@ void QtWidgetsApplication1::readKinect() {
     k4a_capture_t capture = NULL;
     emit ready_to_appendlog(QString().fromLocal8Bit("提示：Kinect初始化成功."));
 
-    // 保存校准值
+    /* 保存校准值
     size_t data_size = 0;
     k4a_device_get_raw_calibration(device, NULL, &data_size);
     data_size += 10;
@@ -534,12 +544,19 @@ void QtWidgetsApplication1::readKinect() {
         calibration_file.open(QIODevice::WriteOnly);
         calibration_file.write((char*)calibration_data, data_size);
         calibration_file.close();
+        QString calibration_cfg_name = save_path + "\\kinect_calibration_cfg";
+        QFile calibration_cfg_file(calibration_cfg_name);
+        calibration_cfg_file.open(QIODevice::WriteOnly | QIODevice::Text);
+        QTextStream txtOutput(&calibration_cfg_file);
+        txtOutput << "raw calibration data size: " << data_size << endl;
+        calibration_cfg_file.close();
         emit ready_to_appendlog(QString().fromLocal8Bit("提示：Kinect相机校准值提取成功."));
     }
     else {
         emit ready_to_appendlog(QString().fromLocal8Bit("警告：Kinect相机校准值提取失败."));
     }
-          
+    */
+
     while (!stop_camera) {
         switch (k4a_device_get_capture(device, &capture, 1000)) {
         case K4A_WAIT_RESULT_SUCCEEDED:
@@ -559,9 +576,13 @@ void QtWidgetsApplication1::readKinect() {
         k4a_image_t color_frame = k4a_capture_get_color_image(capture);
         k4a_image_t depth_frame = k4a_capture_get_depth_image(capture);
         //k4a_image_t ir_frame = k4a_capture_get_ir_image(capture);
-        
+
+        if (record2_count == 1) {
+            qDebug() << "depth image stride : " << k4a_image_get_stride_bytes(depth_frame) << endl;
+        }
+
         //TODO
-        if (!color_frame||!depth_frame) {
+        if (!color_frame || !depth_frame) {
             qDebug() << "Get image failed." << endl;
             k4a_capture_release(capture);
             continue;
@@ -572,6 +593,31 @@ void QtWidgetsApplication1::readKinect() {
             k4a_image_reference(show_color);
             camera2_show_ready = true;
             emit ready_to_show();
+        }
+
+        if (!record_calibration && !stop_record) {
+            record_calibration = true;
+            size_t data_size = 0;
+            k4a_device_get_raw_calibration(device, NULL, &data_size);
+            data_size += 10;
+            uint8_t* calibration_data = new uint8_t[data_size];
+            if (K4A_BUFFER_RESULT_SUCCEEDED == k4a_device_get_raw_calibration(device, calibration_data, &data_size)) {
+                QString calibration_file_name = save_path + "\\kinect_calibration";
+                QFile calibration_file(calibration_file_name);
+                calibration_file.open(QIODevice::WriteOnly);
+                calibration_file.write((char*)calibration_data, data_size);
+                calibration_file.close();
+                QString calibration_cfg_name = save_path + "\\kinect_calibration_cfg";
+                QFile calibration_cfg_file(calibration_cfg_name);
+                calibration_cfg_file.open(QIODevice::WriteOnly | QIODevice::Text);
+                QTextStream txtOutput(&calibration_cfg_file);
+                txtOutput << "raw calibration data size: " << data_size << endl;
+                calibration_cfg_file.close();
+                emit ready_to_appendlog(QString().fromLocal8Bit("提示：Kinect相机校准值提取成功."));
+            }
+            else {
+                emit ready_to_appendlog(QString().fromLocal8Bit("警告：Kinect相机校准值提取失败."));
+            }
         }
 
         if (!stop_record) {
@@ -588,7 +634,7 @@ void QtWidgetsApplication1::readKinect() {
             file3.open(QIODevice::WriteOnly);
             file3.write((char*)k4a_image_get_buffer(depth_frame), k4a_image_get_size(depth_frame));
             file3.close();
-         
+
             record2_count++;
         }
 
@@ -597,7 +643,7 @@ void QtWidgetsApplication1::readKinect() {
         k4a_capture_release(capture);
     }
 
-    
+
 
     k4a_device_stop_cameras(device);
     k4a_device_close(device);
@@ -606,17 +652,17 @@ void QtWidgetsApplication1::readKinect() {
 
 
 
-int QtWidgetsApplication1::createVideo(const QString &dirname, const QString &outfile) {
+int QtWidgetsApplication1::createVideo(const QString& dirname, const QString& outfile) {
     int filescount = subFilescount(dirname);
     if (filescount == 0) return 0;
     qDebug() << "The number of jpeg images is " << filescount;
-    
+
     emit ready_to_appendlog(QString().fromLocal8Bit("提示：开始编码视频."));
 
     AVFormatContext* ifmtCtx = NULL;
     AVFormatContext* ofmtCtx = NULL;
     AVPacket pkt;
-    AVFrame* imageFrame, *imageFrameYUV;
+    AVFrame* imageFrame, * imageFrameYUV;
     SwsContext* pImgConvertCtx;
     AVDictionary* params = NULL;
     AVCodec* imageCodec;
@@ -629,7 +675,7 @@ int QtWidgetsApplication1::createVideo(const QString &dirname, const QString &ou
 
     avdevice_register_all();
 
-    ui.progressBar->setRange(0, filescount-1);
+    ui.progressBar->setRange(0, filescount - 1);
     ui.progressBar->reset();
 
     QString filename = dirname + "\\000000.jpeg";
@@ -638,7 +684,7 @@ int QtWidgetsApplication1::createVideo(const QString &dirname, const QString &ou
         emit ready_to_appendlog(QString().fromLocal8Bit("错误：无法打开图像文件."));
         goto end;
     }
-    
+
     if (avformat_find_stream_info(ifmtCtx, NULL) < 0)
     {
         qDebug() << "Couldn't find stream information.\n";
@@ -784,13 +830,13 @@ int QtWidgetsApplication1::createVideo(const QString &dirname, const QString &ou
     pImgConvertCtx = sws_getContext(imageCodecCtx->width, imageCodecCtx->height,
         imageCodecCtx->pix_fmt, imageCodecCtx->width, imageCodecCtx->height,
         convertFormat, SWS_BICUBIC, NULL, NULL, NULL);
-    
+
 
     int frameIndex = 0;
     while (frameIndex < filescount) {
         ui.progressLabel->setText(QString().sprintf("Encoding video: %d/%d -> ", frameIndex, filescount - 1) + outfile);
         ui.progressBar->setValue(frameIndex);
-        
+
         filename = dirname + QString().sprintf("\\%06d.jpeg", frameIndex);
         //qDebug() << filename;
         avformat_free_context(ifmtCtx);
@@ -801,7 +847,7 @@ int QtWidgetsApplication1::createVideo(const QString &dirname, const QString &ou
             qDebug() << "Can't open input file.";
             goto end;
         }
-        
+
         ret = av_read_frame(ifmtCtx, &pkt);
 
         if (ret < 0) {
@@ -865,7 +911,7 @@ end:
         ui.progressBar->setValue(filescount - 1);
         return -1;
     }
-    qDebug() << "Encode Successfully"; 
+    qDebug() << "Encode Successfully";
     ui.progressLabel->setText("Encode Successfully");
     ui.progressBar->setValue(filescount - 1);
 
@@ -967,7 +1013,7 @@ repeat:
         std::string str = "错误：初始化传感器" + sensor_name + "失败.";
         ui.logBrowser->append(QString().fromLocal8Bit(str.c_str()));
         zenclient.close();
-        return; 
+        return;
     }
     auto imuPair = sensor.getAnyComponentOfType(g_zenSensorType_Imu);
     auto& hasImu = imuPair.first;
@@ -987,7 +1033,7 @@ repeat:
     qDebug() << "Init Sensor " << index << " Successfully.";
     std::string str = "提示：初始化传感器" + sensor_name + "成功.";
     ui.logBrowser->append(QString().fromLocal8Bit(str.c_str()));
-    
+
     int last_record = -1;
     int count = 0;
     ZenEventData_SensorFound sensorfound;

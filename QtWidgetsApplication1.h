@@ -78,8 +78,9 @@ private:
     QVector<QFile*> imu_files;
     QVector<QTextStream*> imu_outstreams;
 
-    FILE* fp;
-
+    FILE *fp1, *fp2, *fp3;
+    
+    bool record_calibration;
 
 signals:
     void ready_to_show();
